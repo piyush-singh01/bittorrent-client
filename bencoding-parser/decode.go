@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -22,11 +23,11 @@ func getBencodeType(data []byte, pos int) int {
 	}
 
 	switch {
-	case rune(data[pos]) == 'i':
+	case data[pos] == 'i':
 		return IntegerType
-	case rune(data[pos]) == 'l':
+	case data[pos] == 'l':
 		return ListType
-	case rune(data[pos]) == 'd':
+	case data[pos] == 'd':
 		return DictionaryType
 	case unicode.IsDigit(rune(data[pos])):
 		return StringType
@@ -41,7 +42,7 @@ func ParseInt(data []byte, startPos int) (bencode *Bencode, endPos int, err erro
 		return
 	}
 
-	if rune(data[startPos]) != 'i' {
+	if data[startPos] != 'i' {
 		err = fmt.Errorf("error while parsing integer at position %d: expected 'i'", startPos)
 		return
 	}
@@ -60,7 +61,8 @@ func ParseInt(data []byte, startPos int) (bencode *Bencode, endPos int, err erro
 	}
 
 	bencode = NewBencodeFromBInt(NewBencodeInt(parsedInt))
-	return bencode, endPos + 1, nil
+	endPos++
+	return bencode, endPos, err
 }
 
 func ParseString(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
@@ -69,7 +71,7 @@ func ParseString(data []byte, startPos int) (bencode *Bencode, endPos int, err e
 		return
 	}
 
-	if !unicode.IsDigit(rune(data[startPos])) {
+	if data[startPos] < '0' || data[startPos] > '9' {
 		err = fmt.Errorf("error while parsing string at pos %d: expected numeric", startPos)
 		return
 	}
@@ -80,15 +82,21 @@ func ParseString(data []byte, startPos int) (bencode *Bencode, endPos int, err e
 		return
 	}
 	colonIdx += startPos
+
 	strLen, parseErr := strconv.Atoi(string(data[startPos:colonIdx]))
 	if parseErr != nil {
 		err = fmt.Errorf("error: %v while converting integer to string at pos %d", parseErr, startPos)
 		return
 	}
 
-	endPos = colonIdx + strLen
-	bencode = NewBencodeFromBString(NewBencodeString(string(data[colonIdx+1 : endPos+1])))
-	return bencode, endPos + 1, nil
+	endPos = colonIdx + strLen + 1
+	if endPos > len(data) {
+		err = fmt.Errorf("string length %d exceeds data bounds starting at pos %d", strLen, startPos)
+		return
+	}
+
+	bencode = NewBencodeFromBString(NewBencodeString(string(data[colonIdx+1 : endPos])))
+	return bencode, endPos, err
 }
 
 func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
@@ -97,15 +105,18 @@ func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err err
 		return
 	}
 
-	if rune(data[startPos]) != 'l' {
+	if data[startPos] != 'l' {
 		err = fmt.Errorf("error while parsing list at position %d: expected 'l'", startPos)
 		return
 	}
 
 	bencodeList := NewBencodeList()
 	pos := startPos + 1
-	for rune(data[pos]) != 'e' {
+	for data[pos] != 'e' {
 		bencodeType := getBencodeType(data, pos)
+		if bencodeType < 0 {
+			return nil, pos, fmt.Errorf("unhandled bencode type at position %d", pos)
+		}
 		var bencodeCurr *Bencode
 
 		switch bencodeType {
@@ -115,19 +126,15 @@ func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err err
 			bencodeCurr, pos, err = ParseInt(data, pos)
 		case ListType:
 			bencodeCurr, pos, err = ParseList(data, pos)
-		default:
-			panic("unhandled default case")
-		}
-
-		if err != nil {
-			panic("something went wrong in parsing list") // todo
+		case DictionaryType:
+			bencodeCurr, pos, err = ParseDictionary(data, pos)
 		}
 
 		bencodeList.AddToBencodeList(bencodeCurr)
 	}
 	bencode = NewBencodeFromBList(bencodeList)
 
-	return bencode, pos + 1, nil
+	return bencode, pos + 1, err
 }
 
 func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
@@ -136,14 +143,14 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 		return
 	}
 
-	if rune(data[startPos]) != 'd' {
+	if data[startPos] != 'd' {
 		err = fmt.Errorf("error while parsing list at position %d: expected 'd'", startPos)
 		return
 	}
 
 	bencodeDictionary := NewBencodeDict()
 	pos := startPos + 1
-	for rune(data[pos]) != 'e' {
+	for data[pos] != 'e' {
 		bencodeTypeKey := getBencodeType(data, pos)
 		if bencodeTypeKey != StringType {
 			err = fmt.Errorf("error at pos %d: key is not a string", pos)
@@ -152,11 +159,12 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 
 		var bencodeKey *Bencode
 		bencodeKey, pos, err = ParseString(data, pos)
-		if err != nil {
-			panic("something went wrong in parsing dictionary") // todo
-		}
 
 		bencodeTypeValue := getBencodeType(data, pos)
+		if bencodeTypeValue < 0 {
+			return nil, pos, fmt.Errorf("unhandled bencode type at position %d", pos)
+		}
+
 		var bencodeValue *Bencode
 		switch bencodeTypeValue {
 		case StringType:
@@ -167,18 +175,15 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 			bencodeValue, pos, err = ParseList(data, pos)
 		case DictionaryType:
 			bencodeValue, pos, err = ParseDictionary(data, pos)
-		default:
-			panic("unhandled default case")
 		}
 
-		bencodeDictionary.PutInDictionary(bencodeKey, bencodeValue)
+		bencodeDictionary.PutInBencodeDictionary(bencodeKey, bencodeValue)
 	}
 	bencode = NewBencodeFromBDict(bencodeDictionary)
-	return bencode, pos + 1, nil
+	return bencode, pos + 1, err
 }
 
 func main() {
-
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: go run decode.go <filename>")
 		return
@@ -189,12 +194,10 @@ func main() {
 		log.Fatalf("error reading file %v", err)
 	}
 
-	bencode, endPos, err := ParseDictionary(fileContent, 0)
+	bencode, _, err := ParseDictionary(fileContent, 0)
 	if err != nil {
-		panic(err)
+		wrappedErr := errors.New("parsing error: " + err.Error())
+		log.Fatalf("error parsing the file %s: %v\n", os.Args[1], wrappedErr)
 	}
-	fmt.Println(string(fileContent))
 	fmt.Println(bencode)
-	fmt.Println(endPos)
-
 }

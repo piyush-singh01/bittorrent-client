@@ -10,6 +10,26 @@ type BencodeInt int
 type BencodeList []Bencode
 type BencodeDict map[BencodeString]Bencode
 
+type Bencode struct {
+	BString *BencodeString
+	BInt    *BencodeInt
+	BList   *BencodeList
+	BDict   *BencodeDict
+}
+
+func (b *Bencode) getBencodeType() int {
+	if b.BString != nil {
+		return StringType
+	} else if b.BInt != nil {
+		return IntegerType
+	} else if b.BList != nil {
+		return ListType
+	} else if b.BDict != nil {
+		return DictionaryType
+	}
+	return -1
+}
+
 func NewBencodeString(s string) *BencodeString {
 	bencodeString := BencodeString(s)
 	return &bencodeString
@@ -66,21 +86,6 @@ func stringify(bd *BencodeDict, indentLvl int) string {
 	return res
 }
 
-func (bl *BencodeList) AddToBencodeList(b *Bencode) {
-	*bl = append(*bl, *b)
-}
-
-func (bd *BencodeDict) PutInDictionary(key *Bencode, value *Bencode) {
-	(*bd)[*(key.BString)] = *value
-}
-
-type Bencode struct {
-	BString *BencodeString
-	BInt    *BencodeInt
-	BList   *BencodeList
-	BDict   *BencodeDict
-}
-
 func (b *Bencode) String() string {
 	if b.BString != nil {
 		return fmt.Sprint(b.BString)
@@ -94,17 +99,12 @@ func (b *Bencode) String() string {
 	return ""
 }
 
-func (b *Bencode) getBencodeType() int {
-	if b.BString != nil {
-		return StringType
-	} else if b.BInt != nil {
-		return IntegerType
-	} else if b.BList != nil {
-		return ListType
-	} else if b.BDict != nil {
-		return DictionaryType
-	}
-	return -1
+func (bl *BencodeList) AddToBencodeList(b *Bencode) {
+	*bl = append(*bl, *b)
+}
+
+func (bd *BencodeDict) PutInBencodeDictionary(key *Bencode, value *Bencode) {
+	(*bd)[*(key.BString)] = *value
 }
 
 func NewBencodeFromBString(bs *BencodeString) *Bencode {
