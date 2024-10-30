@@ -1,4 +1,4 @@
-package main
+package bencodingParser
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 )
 
 type BencodeString string
-type BencodeInt int
+type BencodeInt int64
 type BencodeList []Bencode
 type BencodeDict map[BencodeString]Bencode
 
@@ -99,12 +99,20 @@ func (b *Bencode) String() string {
 	return ""
 }
 
-func (bl *BencodeList) AddToBencodeList(b *Bencode) {
+func (bl *BencodeList) Add(b *Bencode) {
 	*bl = append(*bl, *b)
 }
 
-func (bd *BencodeDict) PutInBencodeDictionary(key *Bencode, value *Bencode) {
+func (bd *BencodeDict) Put(key *Bencode, value *Bencode) {
 	(*bd)[*(key.BString)] = *value
+}
+
+func (bd *BencodeDict) Get(key string) (*Bencode, bool) {
+	value, ok := (*bd)[BencodeString(key)]
+	if ok {
+		return &value, true
+	}
+	return nil, false
 }
 
 func NewBencodeFromBString(bs *BencodeString) *Bencode {
