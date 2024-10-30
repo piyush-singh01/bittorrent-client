@@ -1,11 +1,11 @@
-package main
+package bencodingParser
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
-	"os"
 	"strconv"
 	"unicode"
 )
@@ -130,7 +130,7 @@ func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err err
 			bencodeCurr, pos, err = ParseDictionary(data, pos)
 		}
 
-		bencodeList.AddToBencodeList(bencodeCurr)
+		bencodeList.Add(bencodeCurr)
 	}
 	bencode = NewBencodeFromBList(bencodeList)
 
@@ -177,27 +177,21 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 			bencodeValue, pos, err = ParseDictionary(data, pos)
 		}
 
-		bencodeDictionary.PutInBencodeDictionary(bencodeKey, bencodeValue)
+		bencodeDictionary.Put(bencodeKey, bencodeValue)
 	}
 	bencode = NewBencodeFromBDict(bencodeDictionary)
 	return bencode, pos + 1, err
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("Usage: go run decode.go <filename>")
-		return
-	}
-
-	fileContent, err := os.ReadFile(os.Args[1])
+func ParseTorrentFile(reader io.Reader) (bencode *Bencode, err error) {
+	fileContent, err := io.ReadAll(reader)
 	if err != nil {
 		log.Fatalf("error reading file %v", err)
 	}
 
-	bencode, _, err := ParseDictionary(fileContent, 0)
+	bencode, _, err = ParseDictionary(fileContent, 0)
 	if err != nil {
-		wrappedErr := errors.New("parsing error: " + err.Error())
-		log.Fatalf("error parsing the file %s: %v\n", os.Args[1], wrappedErr)
+		err = errors.New("parsing error: " + err.Error())
 	}
-	fmt.Println(bencode)
+	return bencode, err
 }
