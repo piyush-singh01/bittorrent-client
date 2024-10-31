@@ -17,6 +17,13 @@ type Bencode struct {
 	BDict   *BencodeDict
 }
 
+const (
+	StringType = iota
+	IntegerType
+	ListType
+	DictionaryType
+)
+
 func (b *Bencode) getBencodeType() int {
 	if b.BString != nil {
 		return StringType
