@@ -10,13 +10,6 @@ import (
 	"unicode"
 )
 
-const (
-	StringType = iota
-	IntegerType
-	ListType
-	DictionaryType
-)
-
 func getBencodeType(data []byte, pos int) int {
 	if pos < 0 || pos >= len(data) {
 		return -1
