@@ -3,6 +3,7 @@ package bencodingParser
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 )
 
@@ -76,14 +77,26 @@ func encodeDictionary(bencode *Bencode) ([]byte, error) {
 		return nil, fmt.Errorf("bencode parsing error: 'bencode' struct or its 'BDict' field is nil; please initialize before processing")
 	}
 	data = append(data, 'd')
-	for key, value := range *bencode.BDict {
-		encodedKey, err := encodeString(NewBencodeFromBString(&key))
+
+	keys := func() []string {
+		var keys []string
+		for key, _ := range *bencode.BDict {
+			keys = append(keys, string(key))
+		}
+
+		sort.Strings(keys)
+		return keys
+	}()
+
+	for _, key := range keys {
+		encodedKey, err := encodeString(NewBencodeFromBString(NewBencodeString(key)))
 		if err != nil {
 			return nil, err
 		}
 		data = append(data, encodedKey...)
 
-		encodedValue, err := serializeBencode(&value)
+		bencodeValue, _ := (*bencode.BDict).Get(key)
+		encodedValue, err := serializeBencode(bencodeValue)
 		if err != nil {
 			return nil, err
 		}
