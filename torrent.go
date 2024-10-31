@@ -3,8 +3,8 @@ package main
 import (
 	bencodingParser "bittorrent-client/bencoding-parser"
 	"fmt"
+	"io"
 	"log"
-	"os"
 	"strings"
 	"time"
 )
@@ -73,7 +73,7 @@ func NewTorrent() *Torrent {
 
 func (t *Torrent) String() string {
 	return fmt.Sprintf(
-		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfo: %s\n}\n",
+		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfo: %s\n}\n ",
 		t.Announce,
 		t.AnnounceList,
 		t.CreationDate.Format(time.RFC3339),
@@ -296,15 +296,10 @@ func parseFilesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) []F
 	return filesList
 }
 
-func LoadTorrent(fileName string) (*Torrent, error) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-
-	bencode, err := bencodingParser.ParseBencodeTorrentFile(file)
+func LoadTorrent(reader io.Reader) (*Torrent, error) {
+	bencode, err := bencodingParser.ParseBencodeTorrentFile(reader)
 	if err != nil || bencode.BDict == nil {
-		log.Fatalf("error parsing the file %s: %v\n", fileName, err)
+		log.Fatalf("error parsing the file: %v\n", err)
 	}
 	bencodeTorrentDict := bencode.BDict
 
@@ -322,8 +317,4 @@ func LoadTorrent(fileName string) (*Torrent, error) {
 	torrent.StructureType = getTorrentFileType(bencodeInfoDictionary.BDict)
 
 	return torrent, nil
-}
-
-func main() {
-	fmt.Println(LoadTorrent("file_ubuntu.torrent"))
 }
