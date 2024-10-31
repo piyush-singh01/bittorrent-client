@@ -73,7 +73,7 @@ func NewTorrent() *Torrent {
 
 func (t *Torrent) String() string {
 	return fmt.Sprintf(
-		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfo: %s\n}",
+		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfo: %s\n}\n",
 		t.Announce,
 		t.AnnounceList,
 		t.CreationDate.Format(time.RFC3339),
@@ -182,7 +182,7 @@ func parseOptionalCreationDate(bencodeTorrentDict *bencodingParser.BencodeDict) 
 func parseOptionalEncoding(bencodeTorrentDict *bencodingParser.BencodeDict) string {
 	encodingBencode, exists := bencodeTorrentDict.Get(EncodingKey)
 	if !exists || encodingBencode.BString == nil {
-		log.Printf("no 'created by' found in the torrent file")
+		log.Printf("no 'encoding' found in the torrent file")
 		return ""
 	}
 	return string(*encodingBencode.BString)
@@ -296,24 +296,19 @@ func parseFilesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) []F
 	return filesList
 }
 
-func main() {
-	// now to parse a torrent file
-	fileName := "file.torrent"
-
+func LoadTorrent(fileName string) (*Torrent, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
 
-	bencode, err := bencodingParser.ParseTorrentFile(file)
-	if err != nil {
+	bencode, err := bencodingParser.ParseBencodeTorrentFile(file)
+	if err != nil || bencode.BDict == nil {
 		log.Fatalf("error parsing the file %s: %v\n", fileName, err)
 	}
-	//fmt.Print(bencode)
-
 	bencodeTorrentDict := bencode.BDict
-	torrent := NewTorrent()
 
+	torrent := NewTorrent()
 	torrent.Announce = parseAnnounceUrl(bencodeTorrentDict)
 	torrent.Comment = parseOptionalComment(bencodeTorrentDict)
 	torrent.CreatedBy = parseOptionalCreatedBy(bencodeTorrentDict)
@@ -326,6 +321,9 @@ func main() {
 	bencodeInfoDictionary, _ := bencodeTorrentDict.Get(InfoKey)
 	torrent.StructureType = getTorrentFileType(bencodeInfoDictionary.BDict)
 
-	fmt.Println(torrent)
+	return torrent, nil
+}
 
+func main() {
+	fmt.Println(LoadTorrent("file_ubuntu.torrent"))
 }

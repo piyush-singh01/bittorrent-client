@@ -183,7 +183,7 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 	return bencode, pos + 1, err
 }
 
-func ParseTorrentFile(reader io.Reader) (bencode *Bencode, err error) {
+func ParseBencodeTorrentFile(reader io.Reader) (bencode *Bencode, err error) {
 	fileContent, err := io.ReadAll(reader)
 	if err != nil {
 		log.Fatalf("error reading file %v", err)
