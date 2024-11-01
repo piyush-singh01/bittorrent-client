@@ -2,6 +2,8 @@ package main
 
 import (
 	bencodingParser "bittorrent-client/bencoding-parser"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -52,13 +54,14 @@ type Torrent struct {
 	UrlList       []string    // alternate urls for downloading the resource
 	StructureType TorrentType // for single or multi file types
 	Info          InfoDict    // info dictionary
+	InfoHash      [20]byte    // SHA1 hash of the info dictionary
 }
 
 type InfoDict struct {
 	Name        string // name of the torrent
 	PieceLength int64  // size of each piece in bytes
 	Pieces      []byte // binary; byte slice
-	Length      int64  // for single-file torrent; total size in bytes
+	Length      int64  // for single-file torrent; total size of file in bytes; for a multi-file torrent contains the total size of all files combined
 	Files       []File // for multi-file torrent
 }
 
@@ -73,7 +76,7 @@ func NewTorrent() *Torrent {
 
 func (t *Torrent) String() string {
 	return fmt.Sprintf(
-		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfo: %s\n}\n ",
+		"Torrent{\n\tAnnounce: %s,\n\tAnnounceList: %v,\n\tCreationDate: %s,\n\tComment: %s,\n\tCreatedBy: %s,\n\tEncoding: %s,\n\tUrlList: %v,\n\tStructureType: %s,\n\tInfoHash: %s,\n\tInfo: %s\n}\n ",
 		t.Announce,
 		t.AnnounceList,
 		t.CreationDate.Format(time.RFC3339),
@@ -82,6 +85,7 @@ func (t *Torrent) String() string {
 		t.Encoding,
 		t.UrlList,
 		t.StructureType.String(),
+		hex.EncodeToString(t.InfoHash[:]),
 		t.Info.String(),
 	)
 }
@@ -220,6 +224,7 @@ func parseInfoDictionary(bencodeTorrentDict *bencodingParser.BencodeDict) InfoDi
 	if fileStructureType == SingleFile {
 		infoDict.Length = parseLengthInInfoDictionary(infoDictionary)
 	} else {
+		infoDict.Length = parseLengthInInfoDictionaryForMultiFileTorrent(infoDictionary)
 		infoDict.Files = parseFilesInInfoDictionary(infoDictionary)
 	}
 	return infoDict
@@ -265,12 +270,30 @@ func parseLengthInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) in
 	return int64(*length.BInt)
 }
 
+func parseLengthInInfoDictionaryForMultiFileTorrent(infoDictionary *bencodingParser.BencodeDict) int64 {
+	files, exists := infoDictionary.Get(FilesKey)
+	if !exists || files.BList == nil {
+		log.Fatalf("no 'files' field found in info dictionary of the torrent file")
+	}
+
+	totalLength := int64(0)
+	for _, bencodedFile := range *files.BList {
+		fileLengthBencode, exists := (*bencodedFile.BDict).Get(LengthKey)
+		if !exists || fileLengthBencode.BInt == nil {
+			log.Fatalf("no 'length' field found for a file")
+		}
+		fileLength := int64(*fileLengthBencode.BInt)
+
+		totalLength += fileLength
+	}
+	return totalLength
+}
+
 // parseFilesInInfoDictionary Mandatory field for a multi file torrent
 func parseFilesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) []File {
 	files, exists := infoDictionary.Get(FilesKey)
 	if !exists || files.BList == nil {
 		log.Fatalf("no 'files' field found in info dictionary of the torrent file")
-		return nil
 	}
 
 	var filesList []File
@@ -296,6 +319,31 @@ func parseFilesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) []F
 	return filesList
 }
 
+func ComputeInfoHash(bencodeTorrentDict *bencodingParser.BencodeDict) [20]byte {
+	infoDictionaryBencode, exists := bencodeTorrentDict.Get(InfoKey)
+	if !exists {
+		log.Fatalf("no 'info' dictionary found in torrent file")
+	}
+
+	serializedInfo, err := bencodingParser.SerializeBencode(infoDictionaryBencode)
+	if err != nil {
+		log.Fatalf("error encoding the info dictionary")
+	}
+
+	hasher := sha1.New()
+	hasher.Write(serializedInfo)
+
+	sum := hasher.Sum(nil)
+	if len(sum) != 20 {
+		log.Fatalf("SHA-1 hash length mismatch, expected 20 bytes, obtained %d bytes", len(sum))
+	}
+
+	var infoHash [20]byte
+	copy(infoHash[:], sum)
+
+	return infoHash
+}
+
 func LoadTorrent(reader io.Reader) (*Torrent, error) {
 	bencode, err := bencodingParser.ParseBencodeTorrentFile(reader)
 	if err != nil || bencode.BDict == nil {
@@ -316,5 +364,6 @@ func LoadTorrent(reader io.Reader) (*Torrent, error) {
 	bencodeInfoDictionary, _ := bencodeTorrentDict.Get(InfoKey)
 	torrent.StructureType = getTorrentFileType(bencodeInfoDictionary.BDict)
 
+	torrent.InfoHash = ComputeInfoHash(bencodeTorrentDict)
 	return torrent, nil
 }
