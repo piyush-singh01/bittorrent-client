@@ -29,7 +29,7 @@ func getBencodeType(data []byte, pos int) int {
 	}
 }
 
-func ParseInt(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
+func parseInt(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
 	if startPos < 0 || startPos >= len(data) {
 		err = fmt.Errorf("position %d is invalid", startPos)
 		return
@@ -58,7 +58,7 @@ func ParseInt(data []byte, startPos int) (bencode *Bencode, endPos int, err erro
 	return bencode, endPos, err
 }
 
-func ParseString(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
+func parseString(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
 	if startPos < 0 || startPos >= len(data) {
 		err = fmt.Errorf("position %d is invalid", startPos)
 		return
@@ -92,7 +92,7 @@ func ParseString(data []byte, startPos int) (bencode *Bencode, endPos int, err e
 	return bencode, endPos, err
 }
 
-func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
+func parseList(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
 	if startPos < 0 || startPos >= len(data) {
 		err = fmt.Errorf("position %d is invalid", startPos)
 		return
@@ -114,13 +114,13 @@ func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err err
 
 		switch bencodeType {
 		case StringType:
-			bencodeCurr, pos, err = ParseString(data, pos)
+			bencodeCurr, pos, err = parseString(data, pos)
 		case IntegerType:
-			bencodeCurr, pos, err = ParseInt(data, pos)
+			bencodeCurr, pos, err = parseInt(data, pos)
 		case ListType:
-			bencodeCurr, pos, err = ParseList(data, pos)
+			bencodeCurr, pos, err = parseList(data, pos)
 		case DictionaryType:
-			bencodeCurr, pos, err = ParseDictionary(data, pos)
+			bencodeCurr, pos, err = parseDictionary(data, pos)
 		}
 
 		bencodeList.Add(bencodeCurr)
@@ -130,7 +130,7 @@ func ParseList(data []byte, startPos int) (bencode *Bencode, endPos int, err err
 	return bencode, pos + 1, err
 }
 
-func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
+func parseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, err error) {
 	if startPos < 0 || startPos >= len(data) {
 		err = fmt.Errorf("position %d is invalid", startPos)
 		return
@@ -151,7 +151,7 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 		}
 
 		var bencodeKey *Bencode
-		bencodeKey, pos, err = ParseString(data, pos)
+		bencodeKey, pos, err = parseString(data, pos)
 
 		bencodeTypeValue := getBencodeType(data, pos)
 		if bencodeTypeValue < 0 {
@@ -161,13 +161,13 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 		var bencodeValue *Bencode
 		switch bencodeTypeValue {
 		case StringType:
-			bencodeValue, pos, err = ParseString(data, pos)
+			bencodeValue, pos, err = parseString(data, pos)
 		case IntegerType:
-			bencodeValue, pos, err = ParseInt(data, pos)
+			bencodeValue, pos, err = parseInt(data, pos)
 		case ListType:
-			bencodeValue, pos, err = ParseList(data, pos)
+			bencodeValue, pos, err = parseList(data, pos)
 		case DictionaryType:
-			bencodeValue, pos, err = ParseDictionary(data, pos)
+			bencodeValue, pos, err = parseDictionary(data, pos)
 		}
 
 		bencodeDictionary.Put(bencodeKey, bencodeValue)
@@ -176,13 +176,21 @@ func ParseDictionary(data []byte, startPos int) (bencode *Bencode, endPos int, e
 	return bencode, pos + 1, err
 }
 
-func ParseBencodeTorrentFile(reader io.Reader) (bencode *Bencode, err error) {
+func ParseBencodeFromTorrentFile(reader io.Reader) (bencode *Bencode, err error) {
 	fileContent, err := io.ReadAll(reader)
 	if err != nil {
 		log.Fatalf("error reading file %v", err)
 	}
 
-	bencode, _, err = ParseDictionary(fileContent, 0)
+	bencode, _, err = parseDictionary(fileContent, 0)
+	if err != nil {
+		err = errors.New("parsing error: " + err.Error())
+	}
+	return bencode, err
+}
+
+func ParseBencodeFromByteSlice(content []byte) (bencode *Bencode, err error) {
+	bencode, _, err = parseDictionary(content, 0)
 	if err != nil {
 		err = errors.New("parsing error: " + err.Error())
 	}
