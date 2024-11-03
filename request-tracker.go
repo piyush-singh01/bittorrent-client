@@ -23,7 +23,7 @@ func CloseReadCloserWithLog(c io.ReadCloser) {
 func (t *Torrent) buildTrackerRequestUrl(peerId [20]byte, port uint16) (string, error) {
 	baseUrl, err := url.Parse(t.Announce)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to parse tracker URL: %w", err)
 	}
 
 	params := url.Values{
@@ -94,7 +94,40 @@ func getPeerListFromBencode(peerListBencode *bencodingParser.Bencode) ([]Peer, e
 	return peers, nil
 }
 
-func (t *Torrent) GetPeers(peerId [20]byte, port uint16) ([]Peer, error) {
+func getPeers(responseBencode *bencodingParser.Bencode) ([]Peer, error) {
+	peerListBencode, exists := responseBencode.BDict.Get("peers")
+	if !exists {
+		return nil, fmt.Errorf("no peer list found in the response")
+	}
+
+	return getPeerListFromBencode(peerListBencode)
+}
+
+func getInterval(responseBencode *bencodingParser.Bencode) (uint32, error) {
+	intervalBencode, exists := responseBencode.BDict.Get("interval")
+	if !exists || intervalBencode.BInt == nil {
+		return 0, fmt.Errorf("expected key 'interval' but not found in the response")
+	}
+	return uint32(*intervalBencode.BInt), nil
+}
+
+func getComplete(responseBencode *bencodingParser.Bencode) (int, error) {
+	completeBencode, exists := responseBencode.BDict.Get("complete")
+	if !exists || completeBencode.BInt == nil {
+		return 0, fmt.Errorf("expected key 'complete' but not found in the response")
+	}
+	return int(*completeBencode.BInt), nil
+}
+
+func getIncomplete(responseBencode *bencodingParser.Bencode) (int, error) {
+	incompleteBencode, exists := responseBencode.BDict.Get("incomplete")
+	if !exists || incompleteBencode.BInt == nil {
+		return 0, fmt.Errorf("expected key 'incomplete' but not found in the response")
+	}
+	return int(*incompleteBencode.BInt), nil
+}
+
+func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16) (*TrackerResponse, error) {
 	trackerRequestUrl, err := t.buildTrackerRequestUrl(peerId, port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build tracker request URL: %w", err)
@@ -113,15 +146,15 @@ func (t *Torrent) GetPeers(peerId [20]byte, port uint16) ([]Peer, error) {
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
 
-	peersBencode, err := bencodingParser.ParseBencodeFromByteSlice(body)
+	responseBencode, err := bencodingParser.ParseBencodeFromByteSlice(body)
 	if err != nil {
 		return nil, fmt.Errorf("error while deserializing response body: %w", err)
 	}
 
-	peerListBencode, exists := peersBencode.BDict.Get("peers")
-	if !exists {
-		return nil, fmt.Errorf("no peer list found in the response")
-	}
-
-	return getPeerListFromBencode(peerListBencode)
+	var trackerResponse = NewEmptyTrackerResponse()
+	trackerResponse.Peers, err = getPeers(responseBencode)
+	trackerResponse.Interval, err = getInterval(responseBencode)
+	trackerResponse.Complete, err = getComplete(responseBencode)
+	trackerResponse.Incomplete, err = getIncomplete(responseBencode)
+	return trackerResponse, err
 }
