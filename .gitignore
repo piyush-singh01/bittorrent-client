@@ -23,6 +23,11 @@ go.work.sum
 
 # env file
 .env
-test-torrents/*
+
 .DS_Store
 .idea/
+
+# test data
+test-torrents/*
+input.txt
+output.txt
