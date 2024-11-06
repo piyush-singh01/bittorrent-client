@@ -13,13 +13,6 @@ import (
 	"time"
 )
 
-// todo move to utils
-func CloseReadCloserWithLog(c io.ReadCloser) {
-	if err := c.Close(); err != nil {
-		log.Printf("failed to close resource: %v", err)
-	}
-}
-
 func (t *Torrent) buildTrackerRequestUrl(peerId [20]byte, port uint16) (string, error) {
 	baseUrl, err := url.Parse(t.Announce)
 	if err != nil {
@@ -52,8 +45,9 @@ func getPeerListFromBencode(peerListBencode *bencodingParser.Bencode) ([]Peer, e
 			peerIP := net.IP(peerList[i : i+4])
 
 			peerPort := binary.BigEndian.Uint16(peerList[i+4 : i+6])
-			peer := Peer{IP: peerIP, Port: peerPort}
+			peer := Peer{IP: peerIP, Port: peerPort, Type: GetIPType(peerIP)}
 			peers = append(peers, peer)
+
 		}
 		return peers, nil
 	}
@@ -82,12 +76,15 @@ func getPeerListFromBencode(peerListBencode *bencodingParser.Bencode) ([]Peer, e
 			return nil, fmt.Errorf("invalid peer list recieved. expected key 'peer id' but not found")
 		}
 
+		peerIP := net.ParseIP(string(*peerIPBencode.BString))
+
 		var peerId [20]byte
 		copy(peerId[:], *peerIdBencode.BString)
 		peers = append(peers,
 			Peer{
 				Port:   uint16(*peerPortBencode.BInt),
-				IP:     net.ParseIP(string(*peerIPBencode.BString)),
+				IP:     peerIP,
+				Type:   GetIPType(peerIP),
 				PeerId: peerId,
 			})
 	}
@@ -157,4 +154,23 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16) (*TrackerResp
 	trackerResponse.Complete, err = getComplete(responseBencode)
 	trackerResponse.Incomplete, err = getIncomplete(responseBencode)
 	return trackerResponse, err
+}
+
+func (t *Torrent) QueryTrackerWithExponentialBackoff(peerId [20]byte, port uint16, minPeers int) (*TrackerResponse, error) {
+	backoff := time.Second
+	var trackerResponse *TrackerResponse
+	var err error
+	for {
+		trackerResponse, err = t.GetTrackerResponse(peerId, port)
+		if err != nil || len(trackerResponse.Peers) >= minPeers {
+			break
+		}
+		if backoff >= time.Minute {
+			return nil, fmt.Errorf("tracker query timeout, try again")
+		}
+		log.Printf("tracker query failed: %v. retrying in %v", err, backoff)
+		time.Sleep(backoff)
+		backoff *= 2
+	}
+	return trackerResponse, nil
 }
