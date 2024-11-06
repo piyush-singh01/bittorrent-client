@@ -5,9 +5,27 @@ import (
 	"net"
 )
 
+type IPType int
+
+const (
+	IPv4 = iota
+	IPv6
+	Invalid
+)
+
+func GetIPType(ip net.IP) IPType {
+	if ip.To4() != nil {
+		return IPv4
+	} else if ip.To16() != nil {
+		return IPv6
+	}
+	return Invalid
+}
+
 type Peer struct {
 	PeerId [20]byte
 	IP     net.IP
+	Type   IPType
 	Port   uint16
 }
 
