@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 )
 
 // HandshakeMessage struct for peer handshake
@@ -63,7 +62,7 @@ func parseHandshake(handshake []byte) *HandshakeMessage {
 	}
 }
 
-func PerformHandshake(conn net.Conn, torrent *Torrent, peerId [20]byte) error {
+func PerformHandshake(conn *PeerConnection, torrent *Torrent, peerId [20]byte) error {
 	handshakeMessage := NewHandshakeMessage(torrent.InfoHash, peerId)
 	_, err := sendHandshake(conn, handshakeMessage)
 	if err != nil {
@@ -86,18 +85,18 @@ func PerformHandshake(conn net.Conn, torrent *Torrent, peerId [20]byte) error {
 	return nil
 }
 
-func sendHandshake(conn net.Conn, handshake *HandshakeMessage) (n int, err error) {
+func sendHandshake(conn *PeerConnection, handshake *HandshakeMessage) (n int, err error) {
 	serializedHandshake := handshake.Serialize()
-	n, err = conn.Write(serializedHandshake)
+	n, err = conn.tcpConn.Write(serializedHandshake)
 	if err != nil {
 		return 0, fmt.Errorf("error sending handshake to peer: %v", err)
 	}
 	return
 }
 
-func receiveHandshake(conn net.Conn) (*HandshakeMessage, error) {
+func receiveHandshake(conn *PeerConnection) (*HandshakeMessage, error) {
 	buffer := make([]byte, 2048)
-	n, err := conn.Read(buffer)
+	n, err := conn.tcpConn.Read(buffer)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving handshake from peer: %v", err)
 	}
