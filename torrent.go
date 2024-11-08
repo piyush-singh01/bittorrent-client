@@ -17,6 +17,7 @@ type TorrentType int
 const (
 	SingleFile TorrentType = iota
 	MultiFile
+	InvalidTorrentType
 )
 
 const (
@@ -37,11 +38,14 @@ const (
 )
 
 func getTorrentFileType(infoDictionary *bencodingParser.BencodeDict) TorrentType {
-	_, exists := infoDictionary.Get(FilesKey)
-	if exists {
+	_, existsFiles := infoDictionary.Get(FilesKey)
+	_, existsLength := infoDictionary.Get(LengthKey)
+	if existsFiles && !existsLength {
 		return MultiFile
+	} else if existsLength && !existsFiles {
+		return SingleFile
 	}
-	return SingleFile
+	return InvalidTorrentType
 }
 
 type Torrent struct {
@@ -60,7 +64,7 @@ type Torrent struct {
 type InfoDict struct {
 	Name        string // name of the torrent
 	PieceLength int64  // size of each piece in bytes
-	Pieces      []byte // binary; byte slice
+	Pieces      []byte // binary; byte slice todo [][20]bytes?
 	Length      int64  // for single-file torrent; total size of file in bytes; for a multi-file torrent contains the total size of all files combined
 	Files       []File // for multi-file torrent
 }
@@ -223,9 +227,11 @@ func parseInfoDictionary(bencodeTorrentDict *bencodingParser.BencodeDict) InfoDi
 	fileStructureType := getTorrentFileType(infoDictionary)
 	if fileStructureType == SingleFile {
 		infoDict.Length = parseLengthInInfoDictionary(infoDictionary)
-	} else {
+	} else if fileStructureType == MultiFile {
 		infoDict.Length = parseLengthInInfoDictionaryForMultiFileTorrent(infoDictionary)
 		infoDict.Files = parseFilesInInfoDictionary(infoDictionary)
+	} else {
+		log.Fatalf("unhandled torrent file type: neither single-file nor multi-file torrent")
 	}
 	return infoDict
 }
@@ -270,6 +276,7 @@ func parseLengthInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) in
 	return int64(*length.BInt)
 }
 
+// parseLengthInInfoDictionaryForMultiFileTorrent total length of all files combined
 func parseLengthInInfoDictionaryForMultiFileTorrent(infoDictionary *bencodingParser.BencodeDict) int64 {
 	files, exists := infoDictionary.Get(FilesKey)
 	if !exists || files.BList == nil {
@@ -345,13 +352,20 @@ func ComputeInfoHash(bencodeTorrentDict *bencodingParser.BencodeDict) [20]byte {
 }
 
 func LoadTorrent(reader io.Reader) (*Torrent, error) {
-	bencode, err := bencodingParser.ParseBencodeTorrentFile(reader)
+	bencode, err := bencodingParser.ParseBencodeFromTorrentFile(reader)
 	if err != nil || bencode.BDict == nil {
-		log.Fatalf("error parsing the file: %v\n", err)
+		return nil, fmt.Errorf("error parsing the file: %v\n", err)
 	}
 	bencodeTorrentDict := bencode.BDict
 
 	torrent := NewTorrent()
+
+	bencodeInfoDictionary, _ := bencodeTorrentDict.Get(InfoKey)
+	torrent.StructureType = getTorrentFileType(bencodeInfoDictionary.BDict)
+	if torrent.StructureType == InvalidTorrentType {
+		return nil, fmt.Errorf("unhandled torrent file type: neither single-file nor multi-file torrent")
+	}
+
 	torrent.Announce = parseAnnounceUrl(bencodeTorrentDict)
 	torrent.Comment = parseOptionalComment(bencodeTorrentDict)
 	torrent.CreatedBy = parseOptionalCreatedBy(bencodeTorrentDict)
@@ -360,9 +374,6 @@ func LoadTorrent(reader io.Reader) (*Torrent, error) {
 	torrent.UrlList = parseOptionalUrlList(bencodeTorrentDict)
 	torrent.AnnounceList = parseOptionalAnnounceList(bencodeTorrentDict)
 	torrent.Info = parseInfoDictionary(bencodeTorrentDict)
-
-	bencodeInfoDictionary, _ := bencodeTorrentDict.Get(InfoKey)
-	torrent.StructureType = getTorrentFileType(bencodeInfoDictionary.BDict)
 
 	torrent.InfoHash = ComputeInfoHash(bencodeTorrentDict)
 	return torrent, nil
