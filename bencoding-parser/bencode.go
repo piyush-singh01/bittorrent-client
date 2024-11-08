@@ -8,7 +8,18 @@ import (
 type BencodeString string
 type BencodeInt int64
 type BencodeList []Bencode
-type BencodeDict map[BencodeString]Bencode
+
+//type BencodeDict map[BencodeString]Bencode
+
+type BencodeDictEntry struct {
+	key   BencodeString
+	value Bencode
+}
+
+type BencodeDict struct {
+	Lookup        map[BencodeString]int
+	BencodeValues []BencodeDictEntry
+}
 
 type Bencode struct {
 	BString *BencodeString
@@ -53,7 +64,10 @@ func NewBencodeList() *BencodeList {
 }
 
 func NewBencodeDict() *BencodeDict {
-	var BDict BencodeDict = make(map[BencodeString]Bencode)
+	var BDict = BencodeDict{
+		Lookup:        make(map[BencodeString]int),
+		BencodeValues: make([]BencodeDictEntry, 0),
+	}
 	return &BDict
 }
 
@@ -81,7 +95,9 @@ func stringify(bd *BencodeDict, indentLvl int) string {
 	indent := strings.Repeat("\t", indentLvl+1)
 	bracesIndent := strings.Repeat("\t", indentLvl)
 	res := bracesIndent + "{\n"
-	for key, value := range *bd {
+	for _, element := range bd.BencodeValues {
+		key := element.key
+		value := element.value
 		if value.getBencodeType() == DictionaryType {
 			res += fmt.Sprintln(indent + fmt.Sprint(&key) + ": " + stringify(value.BDict, indentLvl+1))
 
@@ -111,13 +127,18 @@ func (bl *BencodeList) Add(b *Bencode) {
 }
 
 func (bd *BencodeDict) Put(key *Bencode, value *Bencode) {
-	(*bd)[*(key.BString)] = *value
+	_, exists := bd.Lookup[*key.BString]
+	if exists {
+		return
+	}
+	bd.BencodeValues = append(bd.BencodeValues, BencodeDictEntry{*key.BString, *value})
+	bd.Lookup[*key.BString] = len(bd.BencodeValues) - 1
 }
 
 func (bd *BencodeDict) Get(key string) (*Bencode, bool) {
-	value, ok := (*bd)[BencodeString(key)]
-	if ok {
-		return &value, true
+	idx, exists := bd.Lookup[BencodeString(key)]
+	if exists {
+		return &bd.BencodeValues[idx].value, true
 	}
 	return nil, false
 }
@@ -146,6 +167,7 @@ func NewBencodeFromBDict(bd *BencodeDict) *Bencode {
 	}
 }
 
+// todo: check the usage of below functions
 func (b *Bencode) panicIfMultipleAssignment() {
 	count := 0
 	if b.BString != nil {
@@ -161,7 +183,7 @@ func (b *Bencode) panicIfMultipleAssignment() {
 		count++
 	}
 	if count > 1 {
-		panic("error in logic")
+		panic("error in logic. multiple assignments found")
 	}
 }
 

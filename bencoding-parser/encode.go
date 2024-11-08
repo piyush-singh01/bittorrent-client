@@ -3,11 +3,10 @@ package bencodingParser
 import (
 	"fmt"
 	"log"
-	"sort"
 	"strconv"
 )
 
-func bencodeType(bencode *Bencode) int {
+func bencodeTypeForSerialization(bencode *Bencode) int {
 	if bencode == nil {
 		return -1
 	}
@@ -78,25 +77,28 @@ func encodeDictionary(bencode *Bencode) ([]byte, error) {
 	}
 	data = append(data, 'd')
 
-	keys := func() []string {
-		var keys []string
-		for key, _ := range *bencode.BDict {
-			keys = append(keys, string(key))
-		}
+	//keys := func() []string {
+	//	var keys []string
+	//	for key, _ := range *bencode.BDict {
+	//		keys = append(keys, string(key))
+	//	}
+	//
+	//	sort.Strings(keys)
+	//	return keys
+	//}()
 
-		sort.Strings(keys)
-		return keys
-	}()
+	for _, ele := range bencode.BDict.BencodeValues {
+		key := ele.key
+		value := ele.value
 
-	for _, key := range keys {
-		encodedKey, err := encodeString(NewBencodeFromBString(NewBencodeString(key)))
+		encodedKey, err := encodeString(NewBencodeFromBString(&key))
 		if err != nil {
 			return nil, err
 		}
 		data = append(data, encodedKey...)
 
-		bencodeValue, _ := (*bencode.BDict).Get(key)
-		encodedValue, err := serializeBencode(bencodeValue)
+		//bencodeValue, _ := (*bencode.BDict).Get(key)
+		encodedValue, err := serializeBencode(&value)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +109,7 @@ func encodeDictionary(bencode *Bencode) ([]byte, error) {
 }
 
 func serializeBencode(bencode *Bencode) ([]byte, error) {
-	serializedBencodeType := bencodeType(bencode)
+	serializedBencodeType := bencodeTypeForSerialization(bencode)
 	if serializedBencodeType == StringType {
 		return encodeString(bencode)
 	} else if serializedBencodeType == IntegerType {
