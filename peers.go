@@ -26,7 +26,7 @@ func generateLocalPeerId() ([20]byte, error) {
 type IPType int
 
 const (
-	IPv4 = iota
+	IPv4 IPType = iota
 	IPv6
 	Invalid
 )
