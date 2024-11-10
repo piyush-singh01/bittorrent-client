@@ -1,5 +1,7 @@
 package main
 
+import "encoding/binary"
+
 type Bitset struct {
 	bits []uint64
 	size uint
@@ -13,14 +15,25 @@ func NewBitset(n uint) *Bitset {
 }
 
 func (b *Bitset) String() string {
-	res := ""
-	var i uint
-	for i = 0; i < b.size; i++ {
-		if b.GetBit(i) == 1 {
+	var res = ""
+	for v := uint(0); v < b.size; v++ {
+		byteIndex := v / 64
+		bitIndex := v % 64
+
+		adjustedBitIndex := 63 - bitIndex
+		if ((b.bits[byteIndex] >> adjustedBitIndex) & 1) == 1 {
 			res += "1"
 		} else {
 			res += "0"
 		}
+	}
+	return res
+}
+
+func (b *Bitset) Serialize() []byte {
+	var res = make([]byte, len(b.bits)*8)
+	for i, ele := range b.bits {
+		binary.BigEndian.PutUint64(res[i*8:(i+1)*8], ele)
 	}
 	return res
 }
@@ -36,7 +49,9 @@ func (b *Bitset) SetBit(v uint) {
 
 	byteIndex := v / 64
 	bitIndex := v % 64
-	b.bits[byteIndex] |= 1 << bitIndex
+
+	adjustedBitIndex := 63 - bitIndex
+	b.bits[byteIndex] |= 1 << adjustedBitIndex
 }
 
 func (b *Bitset) ResetBit(v uint) {
@@ -44,7 +59,9 @@ func (b *Bitset) ResetBit(v uint) {
 
 	byteIndex := v / 64
 	bitIndex := v % 64
-	b.bits[byteIndex] &= ^(1 << bitIndex)
+
+	adjustedBitIndex := 63 - bitIndex
+	b.bits[byteIndex] &= ^(1 << adjustedBitIndex)
 }
 
 func (b *Bitset) GetBit(v uint) uint {
@@ -52,7 +69,9 @@ func (b *Bitset) GetBit(v uint) uint {
 
 	byteIndex := v / 64
 	bitIndex := v % 64
-	return uint((b.bits[byteIndex] >> bitIndex) & 1)
+
+	adjustedBitIndex := 63 - bitIndex
+	return uint((b.bits[byteIndex] >> adjustedBitIndex) & 1)
 }
 
 func (b *Bitset) ToggleBit(v uint) {
@@ -60,7 +79,9 @@ func (b *Bitset) ToggleBit(v uint) {
 
 	byteIndex := v / 64
 	bitIndex := v % 64
-	b.bits[byteIndex] ^= 1 << bitIndex
+
+	adjustedBitIndex := 63 - bitIndex
+	b.bits[byteIndex] ^= 1 << adjustedBitIndex
 }
 
 func (b *Bitset) Clear() {
