@@ -15,6 +15,13 @@ func CloseReadCloserWithLog(c io.ReadCloser) {
 	}
 }
 
+func ceilDiv(a uint, b uint) uint {
+	if a%b == 0 {
+		return a / b
+	}
+	return (a / b) + 1
+}
+
 func CloseConnectionWithLog(c net.Conn) {
 	if err := c.Close(); err != nil {
 		log.Printf("failed to close connection: %v", err)
