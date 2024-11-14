@@ -62,11 +62,12 @@ type Torrent struct {
 }
 
 type InfoDict struct {
-	Name        string // name of the torrent
-	PieceLength int64  // size of each piece in bytes
-	Pieces      []byte // binary; byte slice todo [][20]bytes?
-	Length      int64  // for single-file torrent; total size of file in bytes; for a multi-file torrent contains the total size of all files combined
-	Files       []File // for multi-file torrent
+	Name        string     // name of the torrent
+	PieceLength int64      // size of each piece in bytes
+	Pieces      [][20]byte // binary; byte slice
+	NumPieces   uint       // number of pieces in the torrent
+	Length      int64      // for single-file torrent; total size of file in bytes; for a multi-file torrent contains the total size of all files combined
+	Files       []File     // for multi-file torrent
 }
 
 type File struct {
@@ -222,7 +223,7 @@ func parseInfoDictionary(bencodeTorrentDict *bencodingParser.BencodeDict) InfoDi
 	infoDict := InfoDict{}
 	infoDict.Name = parseNameInInfoDictionary(infoDictionary)
 	infoDict.PieceLength = parsePieceLengthInInfoDictionary(infoDictionary)
-	infoDict.Pieces = parsePiecesInInfoDictionary(infoDictionary)
+	infoDict.Pieces, infoDict.NumPieces = parsePiecesInInfoDictionary(infoDictionary)
 
 	fileStructureType := getTorrentFileType(infoDictionary)
 	if fileStructureType == SingleFile {
@@ -257,13 +258,22 @@ func parsePieceLengthInInfoDictionary(infoDictionary *bencodingParser.BencodeDic
 }
 
 // parsePiecesInInfoDictionary Mandatory field in the info dictionary
-func parsePiecesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) []byte {
+func parsePiecesInInfoDictionary(infoDictionary *bencodingParser.BencodeDict) ([][20]byte, uint) {
 	pieces, exists := infoDictionary.Get(PiecesKey)
 	if !exists || pieces.BString == nil {
 		log.Fatalf("no 'pieces' field found in info dictionary of the torrent file")
 	}
+	piecesData := []byte(*pieces.BString)
+	if len(piecesData)%20 != 0 {
+		log.Fatalf("corrupt torrent file: 'pieces' field length is not a multiple of 20")
+	}
+	numPieces := len(piecesData) / 20
+	parsedPieces := make([][20]byte, numPieces)
+	for i := 0; i < numPieces; i++ {
+		copy(parsedPieces[i][:], piecesData[i*20:(i+1)*20])
+	}
 
-	return []byte(*pieces.BString)
+	return parsedPieces, uint(numPieces)
 }
 
 // parseLengthInInfoDictionary Mandatory field for a single file torrent
