@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 )
@@ -54,4 +55,28 @@ func (p Peer) String() string {
 		p.Port,
 		p.PeerId,
 	)
+}
+
+type PeerState struct {
+	conn           net.Conn
+	peerId         [20]byte
+	peerIdStr      string
+	piecesBitfield *Bitset
+	amChoking      bool
+	amInterested   bool
+	peerChoking    bool
+	peerInterested bool
+}
+
+func NewPeer(peer Peer, conn net.Conn) *PeerState {
+	return &PeerState{
+		conn:           conn,
+		peerId:         peer.PeerId,
+		peerIdStr:      hex.EncodeToString(peer.PeerId[:]),
+		piecesBitfield: nil,
+		amChoking:      true,
+		amInterested:   false,
+		peerChoking:    true,
+		peerInterested: false,
+	}
 }
