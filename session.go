@@ -16,6 +16,7 @@ type Configurable struct {
 	trackerResponseMinPeers     int
 	initialTcpConnectionTimeout time.Duration
 	listenerPort                uint16
+	trackerPollInterval         time.Duration
 }
 
 type TorrentSession struct {
@@ -25,9 +26,10 @@ type TorrentSession struct {
 	peerConnection map[string]*PeerConnection
 	bitfield       *Bitset
 	//connectionChannel chan *PeerConnection // todo: discard this and use the two read and write channels as below
-	readChannel  chan *PeerConnection
-	writeChannel chan *PeerConnection
-	listener     *Listener
+	readChannel       chan *PeerConnection
+	writeChannel      chan *PeerConnection
+	listener          *Listener
+	trackerPollTicker *time.Ticker
 }
 
 func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession, error) {
@@ -37,6 +39,7 @@ func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession,
 		initialTcpConnectionTimeout: time.Second * 5,
 		trackerResponseMinPeers:     4,
 		listenerPort:                8888,
+		trackerPollInterval:         time.Second * 5,
 	}
 	return &TorrentSession{
 		torrent:        torrent,
@@ -49,6 +52,18 @@ func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession,
 		writeChannel: make(chan *PeerConnection, 50),
 		listener:     nil,
 	}, nil
+}
+
+func (ts *TorrentSession) StartTrackerPollTickerWithInterval(trackerPollInterval time.Duration) {
+	if ts.trackerPollTicker != nil {
+		ts.trackerPollTicker.Stop()
+	}
+
+	ts.trackerPollTicker = time.NewTicker(trackerPollInterval)
+}
+
+func (ts *TorrentSession) StopTrackerPollTicker() {
+	ts.trackerPollTicker.Stop()
 }
 
 func (ts *TorrentSession) MountListenerOnDefaultPort() error {
@@ -66,12 +81,11 @@ func (ts *TorrentSession) StartListening() error {
 		return fmt.Errorf("no listener found in torrent session")
 	}
 
-	l := ts.listener
 	for {
 		var conn net.Conn
-		conn, err := l.conn.Accept()
+		conn, err := ts.listener.conn.Accept()
 		if err != nil {
-			log.Printf("listener accept failed")
+			log.Printf("listener accept failed: %v", err)
 			continue
 		}
 
@@ -91,7 +105,7 @@ func (ts *TorrentSession) StartListening() error {
 
 		receivedHandshake, err := HandleHandshake(conn, ts)
 		if err != nil {
-			log.Printf("error performing handshake with incoming peer")
+			log.Printf("can not perform handshake with incoming peer")
 			continue
 		}
 
