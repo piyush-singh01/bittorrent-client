@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strconv"
-	"time"
 )
 
 // PeerConnection represents an active connection with a peer
@@ -35,15 +34,16 @@ func NewPeerConnection(peer Peer, conn net.Conn) *PeerConnection {
 }
 
 // DialPeerWithTimeoutTCP this is meant to be run as a goroutine
-func DialPeerWithTimeoutTCP(peer Peer, timeout time.Duration) (*PeerConnection, error) {
+func DialPeerWithTimeoutTCP(peer Peer, session *TorrentSession) (*PeerConnection, error) {
 	var address *net.TCPAddr
 	var err error
 
-	if peer.Type == IPv4 {
+	switch peer.Type {
+	case IPv4:
 		address, err = net.ResolveTCPAddr("tcp4", peer.IP.String()+":"+strconv.Itoa(int(peer.Port)))
-	} else if peer.Type == IPv6 {
+	case IPv6:
 		address, err = net.ResolveTCPAddr("tcp6", "["+peer.IP.String()+"]"+":"+strconv.Itoa(int(peer.Port)))
-	} else {
+	default:
 		return nil, fmt.Errorf("unsupported peer address type: only ipv4 and ipv6 supported")
 	}
 
@@ -53,9 +53,9 @@ func DialPeerWithTimeoutTCP(peer Peer, timeout time.Duration) (*PeerConnection, 
 
 	log.Printf("initiating tcp connection with peer %s", peer.String())
 
-	conn, err := net.DialTimeout("tcp", address.String(), timeout)
+	conn, err := net.DialTimeout("tcp", address.String(), session.configurable.initialTcpConnectionTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("error intiating tcp connection with peer %s: %v", hex.EncodeToString(peer.PeerId[:]), err)
+		return nil, fmt.Errorf("error initiating tcp connection with peer %s: %v", hex.EncodeToString(peer.PeerId[:]), err)
 	}
 	peerConnection := NewPeerConnection(peer, conn)
 	return peerConnection, nil
