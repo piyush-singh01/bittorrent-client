@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -8,11 +9,29 @@ import (
 	"time"
 )
 
-const LocalPort uint16 = 7777
-
 // PeerConnection represents an active connection with a peer
 type PeerConnection struct {
-	tcpConn net.Conn
+	tcpConn        net.Conn
+	peerId         [20]byte
+	peerIdStr      string
+	piecesBitfield *Bitset
+	amChoking      bool
+	amInterested   bool
+	peerChoking    bool
+	peerInterested bool
+}
+
+func NewPeerConnection(peer Peer, conn net.Conn) *PeerConnection {
+	return &PeerConnection{
+		tcpConn:        conn,
+		peerId:         peer.PeerId,
+		peerIdStr:      hex.EncodeToString(peer.PeerId[:]),
+		piecesBitfield: nil,
+		amChoking:      true,
+		amInterested:   false,
+		peerChoking:    true,
+		peerInterested: false,
+	}
 }
 
 // DialPeerWithTimeoutTCP this is meant to be run as a goroutine
@@ -36,9 +55,9 @@ func DialPeerWithTimeoutTCP(peer Peer, timeout time.Duration) (*PeerConnection, 
 
 	conn, err := net.DialTimeout("tcp", address.String(), timeout)
 	if err != nil {
-		return nil, fmt.Errorf("error intiating tcp connection with peer %s from local port %d: %v", peer.String(), LocalPort, err)
+		return nil, fmt.Errorf("error intiating tcp connection with peer %s: %v", hex.EncodeToString(peer.PeerId[:]), err)
 	}
-	peerConnection := &PeerConnection{tcpConn: conn}
+	peerConnection := NewPeerConnection(peer, conn)
 	return peerConnection, nil
 }
 
