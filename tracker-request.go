@@ -2,6 +2,7 @@ package main
 
 import (
 	bencodingParser "bittorrent-client/bencoding-parser"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -83,6 +84,11 @@ func getPeerListFromBencode(peerListBencode *bencodingParser.Bencode) ([]Peer, e
 
 	// if is compact
 	if peerListBencode.BString != nil {
+		generateRemotePeerId := func(peerIP net.IP, peerPort uint16) [20]byte {
+			data := fmt.Sprintf("%s:%d", peerIP.String(), peerPort)
+			return sha1.Sum([]byte(data))
+		}
+
 		peerList := []byte(*peerListBencode.BString)
 		if len(peerList)%6 != 0 {
 			return nil, fmt.Errorf("invalid compact peer list length: expected multiple of 6 bytes, got %d", len(peerList))
@@ -91,7 +97,7 @@ func getPeerListFromBencode(peerListBencode *bencodingParser.Bencode) ([]Peer, e
 			peerIP := net.IP(peerList[i : i+4])
 
 			peerPort := binary.BigEndian.Uint16(peerList[i+4 : i+6])
-			peer := Peer{IP: peerIP, Port: peerPort, Type: GetIPType(peerIP)}
+			peer := Peer{IP: peerIP, Port: peerPort, Type: GetIPType(peerIP), PeerId: generateRemotePeerId(peerIP, peerPort)}
 			peers = append(peers, peer)
 
 		}
@@ -257,12 +263,17 @@ func (t *Torrent) getTrackerResponse(peerId [20]byte, port uint16, timeout time.
 	return trackerResponse, nil
 }
 
-func (t *Torrent) queryWithExponentialBackoff(peerId [20]byte, port uint16, minPeers int, timeout time.Duration) (*TrackerResponse, error) {
+// GetTrackerResponse queries tracker with exponential backoff
+func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *TorrentSession) (*TrackerResponse, error) {
+	if session.configurable.trackerResponseMinPeers <= 0 {
+		return nil, fmt.Errorf("min peers required should at least be 1")
+	}
+
 	backoff := time.Second
 	var trackerResponse *TrackerResponse
 	var err error
 	for {
-		trackerResponse, err = t.getTrackerResponse(peerId, port, timeout)
+		trackerResponse, err = t.getTrackerResponse(peerId, port, session.configurable.trackerHttpRequestTimeout)
 		if err != nil {
 			log.Printf("tracker returned error: %v, retrying...", err)
 
@@ -274,10 +285,10 @@ func (t *Torrent) queryWithExponentialBackoff(peerId [20]byte, port uint16, minP
 			}
 			continue
 		}
-		if len(trackerResponse.Peers) >= minPeers {
+		if len(trackerResponse.Peers) >= session.configurable.trackerResponseMinPeers {
 			break
 		}
-		if backoff >= time.Minute {
+		if backoff >= session.configurable.trackerQueryTimeout {
 			return nil, fmt.Errorf("tracker query timeout, try again")
 		}
 		log.Printf("tracker query failed: only %d peers returned. retrying in %v", len(trackerResponse.Peers), backoff)
@@ -287,6 +298,6 @@ func (t *Torrent) queryWithExponentialBackoff(peerId [20]byte, port uint16, minP
 	return trackerResponse, nil
 }
 
-func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, minPeers int) (*TrackerResponse, error) {
-	return t.queryWithExponentialBackoff(peerId, port, minPeers, time.Second*12)
-}
+//func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, minPeers int, timeout time.Duration) (*TrackerResponse, error) {
+//	return t.queryWithExponentialBackoff(peerId, port, minPeers, timeout)
+//}
