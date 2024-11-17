@@ -9,9 +9,44 @@ type Bitset struct {
 
 func NewBitset(n uint) *Bitset {
 	return &Bitset{
-		bits: make([]uint64, ceilDiv(n, 64)), // wrong ceil_div(n, 64)
+		bits: make([]uint64, ceilDiv(n, 64)),
 		size: n,
 	}
+}
+
+func ParseBitset(data []byte) *Bitset {
+	size := uint(len(data) * 8)
+	sizeBitset := ceilDiv(size, 64)
+
+	bits := make([]uint64, sizeBitset)
+	for i := uint(0); i < sizeBitset; i++ {
+		start := i * 8
+		end := (i + 1) * 8
+		if end > uint(len(data)) {
+			end = uint(len(data))
+		}
+
+		chunk := data[start:end]
+		if len(chunk) < 8 {
+			paddedChunk := make([]byte, 8)
+			copy(paddedChunk, chunk)
+			chunk = paddedChunk
+		}
+		bits[i] = binary.BigEndian.Uint64(chunk)
+	}
+
+	return &Bitset{
+		bits: bits,
+		size: size,
+	}
+}
+
+// Validate the receiver here is the peer bitfield
+func (b *Bitset) Validate(torrentSession *TorrentSession) bool {
+	if b.size == torrentSession.bitfield.size {
+		return true
+	}
+	return false
 }
 
 func (b *Bitset) String() string {
