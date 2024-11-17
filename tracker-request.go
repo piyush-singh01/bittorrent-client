@@ -281,7 +281,7 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 			backoff *= 2
 
 			if backoff >= time.Minute {
-				return nil, fmt.Errorf("tracker query timeout, try again")
+				return nil, fmt.Errorf("tracker query timeout")
 			}
 			continue
 		}
@@ -289,7 +289,7 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 			break
 		}
 		if backoff >= session.configurable.trackerQueryTimeout {
-			return nil, fmt.Errorf("tracker query timeout, try again")
+			return nil, fmt.Errorf("tracker query timeout")
 		}
 		log.Printf("tracker query failed: only %d peers returned. retrying in %v", len(trackerResponse.Peers), backoff)
 		time.Sleep(backoff)
@@ -297,7 +297,3 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 	}
 	return trackerResponse, nil
 }
-
-//func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, minPeers int, timeout time.Duration) (*TrackerResponse, error) {
-//	return t.queryWithExponentialBackoff(peerId, port, minPeers, timeout)
-//}
