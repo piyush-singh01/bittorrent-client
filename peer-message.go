@@ -41,6 +41,22 @@ func NewBlockRequest(index uint32, begin uint32, length uint32) *BlockRequest {
 	}
 }
 
+func ParseBlockRequest(message []byte) (*BlockRequest, error) {
+	if len(message) < 12 {
+		return nil, fmt.Errorf("invalid message length for block request: expected at least 12 bytes, got %d", len(message))
+	}
+
+	index := binary.BigEndian.Uint32(message[0:4])
+	begin := binary.BigEndian.Uint32(message[4:8])
+	length := binary.BigEndian.Uint32(message[8:12])
+
+	return &BlockRequest{
+		index:  index,
+		begin:  begin,
+		length: length,
+	}, nil
+}
+
 func (b *BlockRequest) Serialize() []byte {
 	requestBuf := make([]byte, 12)
 	binary.BigEndian.PutUint32(requestBuf[0:4], b.index)
@@ -71,6 +87,22 @@ func NewPieceResponse(index uint32, begin uint32, block []byte) *PieceResponse {
 	}
 }
 
+func ParsePieceResponse(message []byte) (*PieceResponse, error) {
+	if len(message) < 12 {
+		return nil, fmt.Errorf("invalid message length: expected at least 12 bytes, got %d", len(message))
+	}
+
+	index := binary.BigEndian.Uint32(message[0:4])
+	begin := binary.BigEndian.Uint32(message[4:8])
+	block := message[8:] // the actual piece block
+
+	return &PieceResponse{
+		index: index,
+		begin: begin,
+		block: block,
+	}, nil
+}
+
 func (p *PieceResponse) Serialize() []byte {
 	responseBuf := make([]byte, 12+len(p.block))
 	binary.BigEndian.PutUint32(responseBuf[0:4], p.index)
@@ -99,6 +131,22 @@ func NewCancelRequest(index uint32, begin uint32, length uint32) *CancelRequest 
 		begin:  begin,
 		length: length,
 	}
+}
+
+func ParseCancelRequest(data []byte) (*CancelRequest, error) {
+	if len(data) < 12 {
+		return nil, fmt.Errorf("invalid data length: expected at least 12 bytes, got %d", len(data))
+	}
+
+	index := binary.BigEndian.Uint32(data[0:4])
+	begin := binary.BigEndian.Uint32(data[4:8])
+	length := binary.BigEndian.Uint32(data[8:12])
+
+	return &CancelRequest{
+		index:  index,
+		begin:  begin,
+		length: length,
+	}, nil
 }
 
 func (c *CancelRequest) Serialize() []byte {
