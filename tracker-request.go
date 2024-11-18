@@ -4,6 +4,7 @@ import (
 	bencodingParser "bittorrent-client/bencoding-parser"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -44,19 +46,19 @@ func (tr *TrackerResponse) String() string {
 	)
 }
 
-func (t *Torrent) buildTrackerRequestUrl(peerId [20]byte, port uint16) (string, error) {
-	baseUrl, err := url.Parse(t.Announce)
+func buildTrackerRequestUrl(torrent *Torrent, peerId [20]byte, port uint16) (string, error) {
+	baseUrl, err := url.Parse(torrent.Announce)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse tracker URL: %w", err)
 	}
 
 	params := url.Values{
-		"info_hash":  []string{string(t.InfoHash[:])},
+		"info_hash":  []string{string(torrent.InfoHash[:])},
 		"peer_id":    []string{string(peerId[:])},
 		"port":       []string{strconv.Itoa(int(port))},
 		"uploaded":   []string{"0"},
 		"downloaded": []string{"0"},
-		"left":       []string{strconv.FormatInt(t.Info.Length, 10)},
+		"left":       []string{strconv.FormatInt(torrent.Info.Length, 10)},
 		"compact":    []string{"1"},
 	}
 	baseUrl.RawQuery = params.Encode()
@@ -192,8 +194,8 @@ func getTrackerId(responseBencode *bencodingParser.Bencode) (string, bool) {
 	return string(*trackerIdBencode.BString), true
 }
 
-func (t *Torrent) getTrackerResponse(peerId [20]byte, port uint16, timeout time.Duration) (*TrackerResponse, error) {
-	trackerRequestUrl, err := t.buildTrackerRequestUrl(peerId, port)
+func getTrackerResponse(torrent *Torrent, peerId [20]byte, port uint16, timeout time.Duration) (*TrackerResponse, error) {
+	trackerRequestUrl, err := buildTrackerRequestUrl(torrent, peerId, port)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build tracker request URL: %w", err)
 	}
@@ -264,8 +266,11 @@ func (t *Torrent) getTrackerResponse(peerId [20]byte, port uint16, timeout time.
 }
 
 // GetTrackerResponse queries tracker with exponential backoff
-func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *TorrentSession) (*TrackerResponse, error) {
-	if session.configurable.trackerResponseMinPeers <= 0 {
+func (ts *TorrentSession) GetTrackerResponse() (*TrackerResponse, error) {
+	port := ts.configurable.listenerPort
+	peerId := ts.localPeerId
+
+	if ts.configurable.trackerResponseMinPeers <= 0 {
 		return nil, fmt.Errorf("min peers required should at least be 1")
 	}
 
@@ -273,7 +278,7 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 	var trackerResponse *TrackerResponse
 	var err error
 	for {
-		trackerResponse, err = t.getTrackerResponse(peerId, port, session.configurable.trackerHttpRequestTimeout)
+		trackerResponse, err = getTrackerResponse(ts.torrent, peerId, port, ts.configurable.trackerHttpRequestTimeout)
 		if err != nil {
 			log.Printf("tracker returned error: %v, retrying...", err)
 
@@ -285,10 +290,10 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 			}
 			continue
 		}
-		if len(trackerResponse.Peers) >= session.configurable.trackerResponseMinPeers {
+		if len(trackerResponse.Peers) >= ts.configurable.trackerResponseMinPeers {
 			break
 		}
-		if backoff >= session.configurable.trackerQueryTimeout {
+		if backoff >= ts.configurable.trackerQueryTimeout {
 			return nil, fmt.Errorf("tracker query timeout")
 		}
 		log.Printf("tracker query failed: only %d peers returned. retrying in %v", len(trackerResponse.Peers), backoff)
@@ -296,4 +301,57 @@ func (t *Torrent) GetTrackerResponse(peerId [20]byte, port uint16, session *Torr
 		backoff *= 2
 	}
 	return trackerResponse, nil
+}
+
+// TrackerPollHandler Meant to be run as a goroutine
+func (ts *TorrentSession) TrackerPollHandler(wg *sync.WaitGroup, mutex *sync.Mutex) {
+	for {
+		if ts.trackerPollTicker == nil {
+			log.Printf("tracker poll ticker is nil")
+			return
+		}
+
+		<-ts.trackerPollTicker.C
+		trackerResponse, err := ts.GetTrackerResponse()
+		if err != nil {
+			log.Print(err)
+			return
+		}
+		log.Printf("number of peers obtained : %d", len(trackerResponse.Peers))
+
+		ts.SetTrackerPolling(time.Second * time.Duration(trackerResponse.Interval))
+		HandleTrackerResponse(trackerResponse, ts, wg, mutex)
+	}
+}
+
+func HandleTrackerResponse(trackerResponse *TrackerResponse, torrentSession *TorrentSession, wg *sync.WaitGroup, mutex *sync.Mutex) {
+	countSuccessfulHandshakes := 0
+	for _, peer := range trackerResponse.Peers {
+		wg.Add(1)
+		go func(peer Peer) {
+			var conn *PeerConnection
+			var err error
+			defer wg.Done()
+			if conn, err = DialPeerWithTimeoutTCP(peer, torrentSession); err != nil {
+				log.Print(err)
+				return
+			}
+
+			if err = PerformHandshake(conn, torrentSession.torrent, torrentSession.localPeerId); err != nil {
+				log.Printf("error performing handshake with peer %s: %v", hex.EncodeToString(peer.PeerId[:]), err)
+				conn.CloseConnection()
+				return
+			}
+
+			mutex.Lock()
+			countSuccessfulHandshakes++
+			mutex.Unlock()
+
+			torrentSession.readChannel <- conn
+			torrentSession.writeChannel <- conn
+
+			log.Printf("handshake successful with peer %s", hex.EncodeToString(peer.PeerId[:]))
+		}(peer)
+	}
+	log.Printf("Total number of successful handshakes are: %d\n", countSuccessfulHandshakes)
 }
