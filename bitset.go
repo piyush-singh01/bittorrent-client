@@ -1,8 +1,12 @@
 package main
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"sync"
+)
 
 type Bitset struct {
+	mu   sync.RWMutex
 	bits []uint64
 	size uint
 }
@@ -43,6 +47,9 @@ func ParseBitset(data []byte) *Bitset {
 
 // Validate the receiver here is the peer bitfield
 func (b *Bitset) Validate(torrentSession *TorrentSession) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	if b.size == torrentSession.bitfield.size {
 		return true
 	}
@@ -50,6 +57,9 @@ func (b *Bitset) Validate(torrentSession *TorrentSession) bool {
 }
 
 func (b *Bitset) String() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	var res = ""
 	for v := uint(0); v < b.size; v++ {
 		byteIndex := v / 64
@@ -66,6 +76,9 @@ func (b *Bitset) String() string {
 }
 
 func (b *Bitset) Serialize() []byte {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	var res = make([]byte, len(b.bits)*8)
 	for i, ele := range b.bits {
 		binary.BigEndian.PutUint64(res[i*8:(i+1)*8], ele)
@@ -80,6 +93,9 @@ func (b *Bitset) checkOutOfBounds(v uint) {
 }
 
 func (b *Bitset) SetBit(v uint) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.checkOutOfBounds(v)
 
 	byteIndex := v / 64
@@ -90,6 +106,9 @@ func (b *Bitset) SetBit(v uint) {
 }
 
 func (b *Bitset) ResetBit(v uint) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.checkOutOfBounds(v)
 
 	byteIndex := v / 64
@@ -100,6 +119,9 @@ func (b *Bitset) ResetBit(v uint) {
 }
 
 func (b *Bitset) GetBit(v uint) uint {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	b.checkOutOfBounds(v)
 
 	byteIndex := v / 64
@@ -110,6 +132,9 @@ func (b *Bitset) GetBit(v uint) uint {
 }
 
 func (b *Bitset) ToggleBit(v uint) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.checkOutOfBounds(v)
 
 	byteIndex := v / 64
@@ -120,18 +145,27 @@ func (b *Bitset) ToggleBit(v uint) {
 }
 
 func (b *Bitset) Clear() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	for i := range b.bits {
 		b.bits[i] = 0
 	}
 }
 
 func (b *Bitset) SetAll() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	for i := range b.bits {
 		b.bits[i] = ^uint64(0)
 	}
 }
 
 func (b *Bitset) CountSetBits() uint {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	var count uint = 0
 	for i := range b.bits {
 		for j := uint(0); j < uint(64); j++ {
@@ -144,5 +178,8 @@ func (b *Bitset) CountSetBits() uint {
 }
 
 func (b *Bitset) Size() uint {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	return b.size
 }
