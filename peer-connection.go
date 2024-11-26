@@ -184,7 +184,7 @@ func (pc *PeerConnection) UpdateLastReadTime() {
 	pc.lastReadTime = time.Now()
 }
 
-// WRITE FROM PEER
+// WRITE TO PEER
 
 func (pc *PeerConnection) WriteMessage(message *PeerMessage, session *TorrentSession) (n int, err error) {
 	n, err = pc.tcpConn.Write(message.Serialize())
