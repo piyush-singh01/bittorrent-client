@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -9,40 +10,71 @@ import (
 	"time"
 )
 
+/* TOC
+- INIT
+	- New Peer Without Reader and Writer Goroutines
+	- Start Reader and Writer Goroutines
+	- New Peer With Reader and Writer Goroutines
+	- Dial New TCP connection to create a connection
+- READ
+	- ReadBytes
+	- ReadMessage
+	- UpdateLastReadTime
+- WRITE
+	- WriteBytes
+	- WriteMessage
+	- UpdateLastWriteTime
+- CLOSE
+	- CloseConnection
+*/
+
 // PeerConnection represents an active connection with a peerConnection
 type PeerConnection struct {
-	tcpConn           net.Conn
-	isActive          bool
-	peerId            [20]byte
-	peerIdStr         string
-	piecesBitfield    *Bitset
-	amChoking         bool
-	amInterested      bool
-	peerChoking       bool
-	peerInterested    bool
-	lastWriteTime     time.Time
-	lastReadTime      time.Time
-	writeChannel      chan *PeerMessage
+	tcpConn        net.Conn
+	isActive       bool
+	piecesBitfield *Bitset
+
+	peerId    [20]byte
+	peerIdStr string
+
+	amChoking      bool
+	amInterested   bool
+	peerChoking    bool
+	peerInterested bool
+
+	lastWriteTime time.Time
+	lastReadTime  time.Time
+
+	writeChannel chan *PeerMessage
+
 	quitReaderChannel chan struct{}
 	quitWriterChannel chan struct{}
+
 	peerReaderStarted bool
 	peerWriterStarted bool
 }
 
+// INIT
+
 func NewPeerConnection(peer Peer, conn net.Conn, session *TorrentSession) *PeerConnection {
 	return &PeerConnection{
-		tcpConn:           conn,
-		peerId:            peer.PeerId,
-		peerIdStr:         hex.EncodeToString(peer.PeerId[:]),
-		piecesBitfield:    nil,
-		amChoking:         true,
-		amInterested:      false,
-		peerChoking:       true,
-		peerInterested:    false,
-		lastWriteTime:     time.Now(),
-		writeChannel:      make(chan *PeerMessage, 1),
+		tcpConn:        conn,
+		isActive:       false,
+		piecesBitfield: nil,
+
+		peerId:    peer.PeerId,
+		peerIdStr: hex.EncodeToString(peer.PeerId[:]),
+
+		amChoking:      true,
+		amInterested:   false,
+		peerChoking:    true,
+		peerInterested: false,
+
+		writeChannel: make(chan *PeerMessage, 1),
+
 		quitReaderChannel: make(chan struct{}, 1),
 		quitWriterChannel: make(chan struct{}, 1),
+
 		peerReaderStarted: false,
 		peerWriterStarted: false,
 	}
@@ -50,73 +82,36 @@ func NewPeerConnection(peer Peer, conn net.Conn, session *TorrentSession) *PeerC
 
 func NewPeerConnectionWithReaderAndWriter(peer Peer, conn net.Conn, session *TorrentSession) *PeerConnection {
 	var peerConnection = &PeerConnection{
-		tcpConn:           conn,
-		peerId:            peer.PeerId,
-		peerIdStr:         hex.EncodeToString(peer.PeerId[:]),
-		piecesBitfield:    nil,
-		amChoking:         true,
-		amInterested:      false,
-		peerChoking:       true,
-		peerInterested:    false,
-		lastWriteTime:     time.Now(),
-		writeChannel:      make(chan *PeerMessage, 30),
+		tcpConn:        conn,
+		isActive:       false,
+		piecesBitfield: nil,
+
+		peerId:    peer.PeerId,
+		peerIdStr: hex.EncodeToString(peer.PeerId[:]),
+
+		amChoking:      true,
+		amInterested:   false,
+		peerChoking:    true,
+		peerInterested: false,
+
+		lastWriteTime: time.Now(),
+
+		writeChannel: make(chan *PeerMessage, 30),
+
 		quitReaderChannel: make(chan struct{}, 1),
 		quitWriterChannel: make(chan struct{}, 1),
+
 		peerReaderStarted: false,
 		peerWriterStarted: false,
 	}
 	err := session.AddPeerToActiveList(peerConnection)
 	if err != nil {
-		log.Printf("can not add peerConnection to active list: %v: discarding connection", err)
+		log.Printf("can not add peerConnection to active list: %v: discarding new connection", err)
 		return nil
 	}
 	go peerConnection.PeerReader(session)
 	go peerConnection.PeerWriter(session)
 	return peerConnection
-}
-
-func (pc *PeerConnection) ReadMessage(session *TorrentSession) (message *PeerMessage, n int, err error) {
-	buffer := make([]byte, ConnectionBufferSize)
-	n, err = pc.tcpConn.Read(buffer)
-	message = ParsePeerMessage(buffer[:n])
-	log.Printf("read %d bytes; message of type %d from peerConnection %s", n, message.MessageId, pc.peerIdStr)
-	session.rateTracker.RecordDownload(pc.peerIdStr, n)
-	pc.UpdateLastReadTime()
-	return
-}
-
-func (pc *PeerConnection) ReadBytes(session *TorrentSession) (data []byte, n int, err error) {
-	buffer := make([]byte, ConnectionBufferSize)
-	n, err = pc.tcpConn.Read(buffer)
-	log.Printf("read %d  bytes from peerConnection %s", n, pc.peerIdStr)
-	data = buffer[:n]
-	session.rateTracker.RecordDownload(pc.peerIdStr, n)
-	pc.UpdateLastReadTime()
-	return
-}
-
-func (pc *PeerConnection) WriteMessage(message *PeerMessage, session *TorrentSession) (n int, err error) {
-	n, err = pc.tcpConn.Write(message.Serialize())
-	log.Printf("written %d bytes; message of type %d to peerConnection %s", n, message.MessageId, pc.peerIdStr)
-	pc.UpdateLastWriteTime()
-	session.rateTracker.RecordUpload(pc.peerIdStr, n)
-	return
-}
-
-func (pc *PeerConnection) WriteBytes(data []byte, session *TorrentSession) (n int, err error) {
-	n, err = pc.tcpConn.Write(data)
-	log.Printf("written %d bytes to peerConnection %s", n, pc.peerIdStr)
-	pc.UpdateLastWriteTime()
-	session.rateTracker.RecordUpload(pc.peerIdStr, n)
-	return
-}
-
-func (pc *PeerConnection) UpdateLastWriteTime() {
-	pc.lastWriteTime = time.Now()
-}
-
-func (pc *PeerConnection) UpdateLastReadTime() {
-	pc.lastReadTime = time.Now()
 }
 
 func (pc *PeerConnection) StartReaderAndWriter(session *TorrentSession) {
@@ -163,6 +158,56 @@ func DialPeerWithTimeoutTCP(peer Peer, session *TorrentSession) (*PeerConnection
 	return peerConnection, nil
 }
 
+// READ FROM PEER
+
+func (pc *PeerConnection) ReadMessage(session *TorrentSession) (message *PeerMessage, n int, err error) {
+	buffer := make([]byte, ConnectionBufferSize)
+	n, err = pc.tcpConn.Read(buffer)
+	message = ParsePeerMessage(buffer[:n])
+	log.Printf("read %d bytes; message of type %d from peerConnection %s", n, message.MessageId, pc.peerIdStr)
+	session.rateTracker.RecordDownload(pc.peerIdStr, n)
+	pc.UpdateLastReadTime()
+	return
+}
+
+func (pc *PeerConnection) ReadBytes(session *TorrentSession) (data []byte, n int, err error) {
+	buffer := make([]byte, ConnectionBufferSize)
+	n, err = pc.tcpConn.Read(buffer)
+	log.Printf("read %d  bytes from peerConnection %s", n, pc.peerIdStr)
+	data = buffer[:n]
+	session.rateTracker.RecordDownload(pc.peerIdStr, n)
+	pc.UpdateLastReadTime()
+	return
+}
+
+func (pc *PeerConnection) UpdateLastReadTime() {
+	pc.lastReadTime = time.Now()
+}
+
+// WRITE FROM PEER
+
+func (pc *PeerConnection) WriteMessage(message *PeerMessage, session *TorrentSession) (n int, err error) {
+	n, err = pc.tcpConn.Write(message.Serialize())
+	log.Printf("written %d bytes; message of type %d to peerConnection %s", n, message.MessageId, pc.peerIdStr)
+	pc.UpdateLastWriteTime()
+	session.rateTracker.RecordUpload(pc.peerIdStr, n)
+	return
+}
+
+func (pc *PeerConnection) WriteBytes(data []byte, session *TorrentSession) (n int, err error) {
+	n, err = pc.tcpConn.Write(data)
+	log.Printf("written %d bytes to peerConnection %s", n, pc.peerIdStr)
+	pc.UpdateLastWriteTime()
+	session.rateTracker.RecordUpload(pc.peerIdStr, n)
+	return
+}
+
+func (pc *PeerConnection) UpdateLastWriteTime() {
+	pc.lastWriteTime = time.Now()
+}
+
+// CLOSE PEER
+
 func (pc *PeerConnection) CloseConnection(session *TorrentSession) {
 	if pc.peerReaderStarted {
 		select {
@@ -182,10 +227,11 @@ func (pc *PeerConnection) CloseConnection(session *TorrentSession) {
 		}
 	}
 
-	// todo: should we fix this? we are closing the connection in dialtcp, before adding to to active list
 	err := session.RemovePeerFromActiveList(pc)
 	if err != nil {
-		log.Printf("can not remove peerConnection %s from active list: %v", pc.peerIdStr, err)
+		if !errors.Is(err, ErrKeyNotPresent) {
+			log.Printf("unexpected error occured while removing peer %s from active list: %v", pc.peerIdStr, err)
+		}
 	}
 
 	if err = pc.tcpConn.Close(); err != nil {
