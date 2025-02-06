@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-// HandshakeMessage struct for peer handshake
+// HandshakeMessage struct for peerConnection handshake
 type HandshakeMessage struct {
 	Pstr     string
 	InfoHash [20]byte
@@ -39,7 +39,7 @@ func (hs *HandshakeMessage) Serialize() []byte {
 	pos += copy(serializedHandshake[pos:], hs.Pstr)         // protocol string
 	pos += copy(serializedHandshake[pos:], make([]byte, 8)) // reserved 8 bytes
 	pos += copy(serializedHandshake[pos:], hs.InfoHash[:])  // info-hash
-	pos += copy(serializedHandshake[pos:], hs.PeerId[:])    // peer id
+	pos += copy(serializedHandshake[pos:], hs.PeerId[:])    // peerConnection id
 	return serializedHandshake
 }
 
@@ -69,8 +69,7 @@ func parseHandshake(handshake []byte) *HandshakeMessage {
 	var peerId [20]byte
 
 	pstr := string(handshake[1 : lenPstr+1])
-	log.Printf("length of pstr is %d", lenPstr)
-	log.Printf("pstr is %s", pstr)
+	log.Printf("parsing peer handshake: length of pstr is %d and pstr is %s", lenPstr, pstr)
 	copy(infohash[:], handshake[lenPstr+9:lenPstr+29])
 	copy(peerId[:], handshake[lenPstr+29:lenPstr+49])
 
@@ -81,52 +80,49 @@ func parseHandshake(handshake []byte) *HandshakeMessage {
 	}
 }
 
-func PerformHandshake(conn *PeerConnection, torrent *Torrent, peerId [20]byte) error {
+func PerformHandshake(conn *PeerConnection, session *TorrentSession, peerId [20]byte) error {
+	torrent := session.torrent
 	handshakeMessage := NewHandshakeMessage(torrent.InfoHash, peerId)
-	_, err := sendHandshake(conn, handshakeMessage)
+	_, err := sendHandshake(conn, handshakeMessage, session)
 	if err != nil {
 		return fmt.Errorf("error sending handshake message: %v", err)
 	}
 
-	log.Printf("sent data to peer")
-	peerHandshake, err := receiveHandshake(conn)
+	log.Printf("sent handshake to peerConnection %s", conn.peerIdStr)
+	peerHandshake, err := receiveHandshake(conn, session)
 	if err != nil {
-		return fmt.Errorf("error receiving handshake message from peer: %v", err)
+		return fmt.Errorf("error receiving handshake message from peerConnection: %v", err)
 	}
-	log.Printf("received data from peer")
+	log.Printf("received handshake from peerConnection %s", conn.peerIdStr)
 
-	if torrent.InfoHash != peerHandshake.InfoHash {
-		return fmt.Errorf("invalid info-hash recieved")
-	}
 	if err = peerHandshake.Validate(torrent); err != nil {
-		return fmt.Errorf("error validating received from peer: %v", err)
+		return fmt.Errorf("error validating received handshake from peerConnection %s: %v", conn.peerIdStr, err)
 	}
 	log.Print("info-hash validated")
 	return nil
 }
 
-func sendHandshake(conn *PeerConnection, message *HandshakeMessage) (n int, err error) {
+func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *TorrentSession) (n int, err error) {
 	serializedHandshake := message.Serialize()
-	n, err = conn.tcpConn.Write(serializedHandshake)
+	n, err = conn.WriteBytes(serializedHandshake, session)
 	if err != nil {
-		return 0, fmt.Errorf("error sending handshake message to peer: %v", err)
+		return 0, fmt.Errorf("error sending handshake message to peerConnection: %v", err)
 	}
 	return
 }
 
-func receiveHandshake(conn *PeerConnection) (*HandshakeMessage, error) {
-	buffer := make([]byte, 2048)
-	n, err := conn.tcpConn.Read(buffer)
+func receiveHandshake(conn *PeerConnection, session *TorrentSession) (*HandshakeMessage, error) {
+	buffer, n, err := conn.ReadBytes(session)
 	if err != nil {
-		return nil, fmt.Errorf("error receiving handshake from peer: %v", err)
+		return nil, fmt.Errorf("error receiving handshake from peerConnection: %v", err)
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("no handshake recieved from peer")
+		return nil, fmt.Errorf("no handshake recieved from peerConnection")
 	}
 
 	peerHandshake := parseHandshake(buffer[:n])
 	if peerHandshake == nil {
-		return nil, fmt.Errorf("no handshake recieved from peer")
+		return nil, fmt.Errorf("no handshake recieved from peerConnection")
 	}
 
 	return peerHandshake, nil
@@ -137,7 +133,7 @@ func HandleHandshake(conn net.Conn, torrentSession *TorrentSession) (*HandshakeM
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("received handshake from incoming peer")
+	log.Printf("received handshake from incoming peerConnection")
 
 	if err = receivedHandshake.Validate(torrentSession.torrent); err != nil {
 		return nil, fmt.Errorf("error validating handshake from connection: %v", err)
@@ -148,24 +144,24 @@ func HandleHandshake(conn net.Conn, torrentSession *TorrentSession) (*HandshakeM
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("sent handshake to incoming peer")
+	log.Printf("sent handshake to incoming peerConnection")
 	return receivedHandshake, nil
 }
 
 func acceptHandshake(conn net.Conn) (*HandshakeMessage, error) {
 	buffer := make([]byte, 16384)
 	n, err := conn.Read(buffer)
-	log.Printf("handshake received from peer")
+	log.Printf("handshake received from peerConnection")
 	if err != nil {
-		return nil, fmt.Errorf("error accepting handshake from peer: %v", err)
+		return nil, fmt.Errorf("error accepting handshake from peerConnection: %v", err)
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("no handshake recieved from peer")
+		return nil, fmt.Errorf("no handshake recieved from peerConnection")
 	}
 
 	peerHandshake := parseHandshake(buffer[:n])
 	if peerHandshake == nil {
-		return nil, fmt.Errorf("no handshake recieved from peer")
+		return nil, fmt.Errorf("no handshake recieved from peerConnection")
 	}
 	return peerHandshake, nil
 }
@@ -174,7 +170,7 @@ func respondHandshake(conn net.Conn, message *HandshakeMessage) (n int, err erro
 	serializedHandshake := message.Serialize()
 	n, err = conn.Write(serializedHandshake)
 	if err != nil {
-		return 0, fmt.Errorf("error responding to handshake by peer: %v", err)
+		return 0, fmt.Errorf("error responding to handshake by peerConnection: %v", err)
 	}
 	return
 }
