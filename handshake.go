@@ -30,7 +30,7 @@ func (hs *HandshakeMessage) String() string {
 		hs.PeerId[:])
 }
 
-func (hs *HandshakeMessage) Serialize() []byte {
+func (hs *HandshakeMessage) serialize() []byte {
 	totalLength := 1 + len(hs.Pstr) + 8 + 20 + 20
 	serializedHandshake := make([]byte, totalLength)
 
@@ -43,7 +43,7 @@ func (hs *HandshakeMessage) Serialize() []byte {
 	return serializedHandshake
 }
 
-func (hs *HandshakeMessage) Validate(torrent *Torrent) error {
+func (hs *HandshakeMessage) validate(torrent *Torrent) error {
 	if hs == nil {
 		return fmt.Errorf("invalid handshake")
 	}
@@ -95,7 +95,7 @@ func PerformHandshake(conn *PeerConnection, session *TorrentSession, peerId [20]
 	}
 	log.Printf("received handshake from peerConnection %s", conn.peerIdStr)
 
-	if err = peerHandshake.Validate(torrent); err != nil {
+	if err = peerHandshake.validate(torrent); err != nil {
 		return fmt.Errorf("error validating received handshake from peerConnection %s: %v", conn.peerIdStr, err)
 	}
 	log.Print("info-hash validated")
@@ -103,7 +103,7 @@ func PerformHandshake(conn *PeerConnection, session *TorrentSession, peerId [20]
 }
 
 func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *TorrentSession) (n int, err error) {
-	serializedHandshake := message.Serialize()
+	serializedHandshake := message.serialize()
 	n, err = conn.WriteBytes(serializedHandshake, session)
 	if err != nil {
 		return 0, fmt.Errorf("error sending handshake message to peerConnection: %v", err)
@@ -135,7 +135,7 @@ func HandleHandshake(conn net.Conn, torrentSession *TorrentSession) (*HandshakeM
 	}
 	log.Printf("received handshake from incoming peerConnection")
 
-	if err = receivedHandshake.Validate(torrentSession.torrent); err != nil {
+	if err = receivedHandshake.validate(torrentSession.torrent); err != nil {
 		return nil, fmt.Errorf("error validating handshake from connection: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func acceptHandshake(conn net.Conn) (*HandshakeMessage, error) {
 }
 
 func respondHandshake(conn net.Conn, message *HandshakeMessage) (n int, err error) {
-	serializedHandshake := message.Serialize()
+	serializedHandshake := message.serialize()
 	n, err = conn.Write(serializedHandshake)
 	if err != nil {
 		return 0, fmt.Errorf("error responding to handshake by peerConnection: %v", err)
