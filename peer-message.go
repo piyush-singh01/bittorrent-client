@@ -5,6 +5,30 @@ import (
 	"fmt"
 )
 
+/* TOC
+PeerMessageType
+	Type Definitions
+
+PeerMessage
+- Struct Definition
+	  BlockRequest
+		- struct definition
+		- constructor
+		- parser
+		- serializer (method)
+		- String   (method)
+	  Piece Response
+		// same structure as the block request
+	  Cancel Request
+		// same structure as the block request
+
+- Constructor (with and without payload)
+- Parser
+- Serializer
+
+- Message constructor for each message type
+*/
+
 type PeerMessageType int8
 
 const (
@@ -18,6 +42,7 @@ const (
 	Request       PeerMessageType = 6
 	Piece         PeerMessageType = 7
 	Cancel        PeerMessageType = 8
+	Extended      PeerMessageType = 84
 	//Port // used for dht, not implemented
 )
 
@@ -173,25 +198,33 @@ func NewPeerMessageNoPayload(messageLen uint32, messageId PeerMessageType) *Peer
 	}
 }
 
-func ParsePeerMessage(data []byte) *PeerMessage {
+func ParsePeerMessage(data []byte) (*PeerMessage, error) {
+
+	if len(data) < 4 {
+		return nil, fmt.Errorf("invalid data length: expected at least 4 bytes, got %d", len(data))
+	}
+
 	messageLength := binary.BigEndian.Uint32(data[0:4])
 
 	if messageLength > 0 {
-		messageId := PeerMessageType(data[4])
+		messageId := int(data[4])
 
 		var payload = make([]byte, messageLength-1)
 		copy(payload, data[5:])
-		// validate peer message before returning
-		return &PeerMessage{
-			MessageLength: messageLength,
-			MessageId:     messageId,
-			Payload:       payload,
+
+		// Validate Message ID
+		if (messageId != 84) && (messageId < -1 || messageId > 8) {
+			return nil, fmt.Errorf("invalid message id: expected between -1 and 8, or 84, got %d", messageId)
 		}
+
+		// Validate payload length
+		if messageLength != uint32(len(payload)) {
+			return nil, fmt.Errorf("invalid data length: expected %d bytes, got %d", messageLength, len(payload))
+		}
+		return NewPeerMessage(messageLength, PeerMessageType(messageId), payload), nil
 	}
-	return &PeerMessage{
-		MessageLength: 0,
-		MessageId:     KeepAlive,
-	}
+
+	return NewKeepAliveMessage(), nil
 }
 
 func (p *PeerMessage) Serialize() []byte {
