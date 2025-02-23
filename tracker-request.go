@@ -304,7 +304,7 @@ func (ts *TorrentSession) GetTrackerResponse() (*TrackerResponse, error) {
 }
 
 // TrackerPollHandler Meant to be run as a goroutine
-func (ts *TorrentSession) TrackerPollHandler(wg *sync.WaitGroup, mutex *sync.Mutex) {
+func (ts *TorrentSession) TrackerPollHandler() {
 	for {
 		if ts.trackerPollTicker == nil {
 			log.Printf("tracker poll ticker is nil")
@@ -320,11 +320,13 @@ func (ts *TorrentSession) TrackerPollHandler(wg *sync.WaitGroup, mutex *sync.Mut
 		log.Printf("number of peers obtained : %d", len(trackerResponse.Peers))
 
 		ts.SetTrackerPolling(time.Second * time.Duration(trackerResponse.Interval))
-		HandleTrackerResponse(trackerResponse, ts, wg, mutex)
+		HandleTrackerResponse(trackerResponse, ts)
 	}
 }
 
-func HandleTrackerResponse(trackerResponse *TrackerResponse, torrentSession *TorrentSession, wg *sync.WaitGroup, mutex *sync.Mutex) {
+func HandleTrackerResponse(trackerResponse *TrackerResponse, torrentSession *TorrentSession) {
+	var wg sync.WaitGroup
+	var mutex sync.Mutex
 	countSuccessfulHandshakes := 0
 	for _, peer := range trackerResponse.Peers {
 		wg.Add(1)
@@ -337,21 +339,20 @@ func HandleTrackerResponse(trackerResponse *TrackerResponse, torrentSession *Tor
 				return
 			}
 
-			if err = PerformHandshake(conn, torrentSession.torrent, torrentSession.localPeerId); err != nil {
-				log.Printf("error performing handshake with peer %s: %v", hex.EncodeToString(peer.PeerId[:]), err)
-				conn.CloseConnection()
+			if err = PerformHandshake(conn, torrentSession, torrentSession.localPeerId); err != nil {
+				log.Printf("error performing handshake with peer %s: %v, closing connection", conn.peerIdStr, err)
+				conn.CloseConnection(torrentSession)
 				return
 			}
+			conn.StartReaderAndWriter(torrentSession)
 
 			mutex.Lock()
 			countSuccessfulHandshakes++
 			mutex.Unlock()
 
-			torrentSession.readChannel <- conn
-			torrentSession.writeChannel <- conn
-
 			log.Printf("handshake successful with peer %s", hex.EncodeToString(peer.PeerId[:]))
 		}(peer)
 	}
+	wg.Wait()
 	log.Printf("Total number of successful handshakes are: %d\n", countSuccessfulHandshakes)
 }

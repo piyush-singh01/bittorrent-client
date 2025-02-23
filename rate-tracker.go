@@ -8,17 +8,20 @@ import (
 
 // RateTracker All operations on this rate tracker are atomic
 type RateTracker struct {
-	// All maps key are hex encoded peer ID strings
-	// All maps are thread safe
-	mu                 sync.RWMutex
-	downloadSpeed      *SpeedMap
-	downloadedBytes    *BytesMap
-	uploadSpeed        *SpeedMap
-	uploadedBytes      *BytesMap
-	lastDownloadTime   *TimeMap
-	lastUploadTime     *TimeMap
+	// All maps key are hex encoded peerConnection ID strings
+	mu              sync.RWMutex
+	downloadSpeed   *SpeedMap
+	downloadedBytes *BytesMap
+
+	uploadSpeed   *SpeedMap
+	uploadedBytes *BytesMap
+
+	lastDownloadTime *TimeMap
+	lastUploadTime   *TimeMap
+
 	totalDownloadSpeed float64
 	totalUploadSpeed   float64
+
 	samplingWindowSize time.Duration
 	decayFactor        float64
 }
@@ -34,7 +37,7 @@ func NewRateTracker() *RateTracker {
 		totalDownloadSpeed: float64(0),
 		totalUploadSpeed:   float64(0),
 		decayFactor:        0.7,
-		samplingWindowSize: time.Millisecond * 10,
+		samplingWindowSize: time.Millisecond * 10, // todo: increase this and experiment
 	}
 }
 

@@ -36,8 +36,8 @@ func (m *RateMap[V]) IsPresent(key string) bool {
 
 // Iterate applies the provided function to each entry in the SpeedMap.
 func (m *RateMap[V]) Iterate(f func(peerId string, value V)) {
-	for peerId, V := range m.mp {
-		f(peerId, V)
+	for peerId, value := range m.mp {
+		f(peerId, value)
 	}
 }
 
