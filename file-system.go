@@ -206,9 +206,6 @@ func (tf *TorrentFile) readWriteOpen() error {
 }
 
 func (tf *TorrentFile) close() {
-	tf.mu.Lock()
-	defer tf.mu.Unlock()
-
 	CloseReadCloserWithLog(tf.osFile)
 	tf.osFile = nil
 }
