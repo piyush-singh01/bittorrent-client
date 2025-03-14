@@ -6,6 +6,12 @@ import (
 	"os"
 )
 
+func findNumBlocksLastPiece(info *InfoDict, numBlocksPerPiece int64) int64 {
+	expectedTotalLength := int64(info.NumPieces) * info.PieceLength
+	sizeOfLastPiece := expectedTotalLength - info.Length // this is the size of last piece
+	return ceilDiv(sizeOfLastPiece, numBlocksPerPiece)
+}
+
 func populatePiecesSlice(torrent *Torrent, numBlocksPerPiece int64) []*TorrentPiece {
 	pieces := make([]*TorrentPiece, torrent.Info.NumPieces)
 
