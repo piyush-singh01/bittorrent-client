@@ -11,6 +11,15 @@ import (
 
 const BlockSize = 1 << 14 // 16KB
 
+/* In the OS, write at piece level, not block level, this will require major modifications lmao*/
+/* This is more convenient, since, it will not require frequent opening, closing or file io */
+/* Also, we can compare the hash at last with the whole piece */
+/* Write to the disk only when the whole piece is obtained, till then keep it in memory */
+/* The numBlocksPerPiece global variable does not carry any meaning, since all pieces do not have the same number of blocks, the last one might have less, and the last one might even be smaller*/
+/* TODO: Add a read piece and write piece methods, and in read block and write block methods, keep it in the memory till then */
+/* TODO: Bruh, but read block might not be present in the memory when it has been written to the disk, keep a method to */
+/* TODO: Also, when the last block is written, automatically call the method to write it into a piece */
+
 type TorrentFileSystem struct {
 	mu sync.Mutex
 
@@ -76,8 +85,9 @@ func NewTorrentFileSystemSingleFile(torrent *Torrent) *TorrentFileSystem {
 		totalLength:       torrent.Info.Length,
 		files:             []*TorrentFile{torrentFile},
 		fileOffset:        fileOffset,
-		pieces:            pieces,
 		pieceLength:       torrent.Info.PieceLength,
+		pieces:            pieces,
+		pieceMutexes:      make([]sync.RWMutex, 0),
 		numPieces:         ceilDiv(torrent.Info.Length, torrent.Info.PieceLength),
 		numBlocksPerPiece: numBlocksPerPiece,
 	}
@@ -113,6 +123,7 @@ func NewTorrentFileSystemMultiFile(torrent *Torrent) *TorrentFileSystem {
 		fileOffset:        fileOffset,
 		pieceLength:       torrent.Info.PieceLength,
 		pieces:            pieces,
+		pieceMutexes:      make([]sync.RWMutex, 0),
 		numPieces:         ceilDiv(torrent.Info.Length, torrent.Info.PieceLength),
 		numBlocksPerPiece: numBlocksPerPiece,
 	}
@@ -174,7 +185,7 @@ func CreateTorrentFileSystem(torrent *Torrent) (*TorrentFileSystem, error) {
 func (tf *TorrentFile) readOpen() error {
 	var osFile *os.File
 	var err error
-	filePath := filepath.Join(tf.path[:len(tf.path)]...)
+	filePath := filepath.Join(tf.path...)
 
 	if tf.osFile != nil {
 		log.Printf("The file is already open: %s", filePath)
@@ -191,7 +202,7 @@ func (tf *TorrentFile) readOpen() error {
 func (tf *TorrentFile) readWriteOpen() error {
 	var osFile *os.File
 	var err error
-	filePath := filepath.Join(tf.path[:len(tf.path)]...)
+	filePath := filepath.Join(tf.path...)
 
 	if tf.osFile != nil {
 		log.Printf("The file is already open: %s", filePath)
@@ -206,6 +217,9 @@ func (tf *TorrentFile) readWriteOpen() error {
 }
 
 func (tf *TorrentFile) close() {
+	tf.mu.Lock()
+	defer tf.mu.Unlock()
+
 	CloseReadCloserWithLog(tf.osFile)
 	tf.osFile = nil
 }
@@ -336,6 +350,10 @@ func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64,
 
 	if offsetToWriteTill > tfs.totalLength {
 		return 0, fmt.Errorf("end offset out of range")
+	}
+
+	if tfs.pieces[pieceIndex].complete {
+		return 0, ErrPieceAlreadyExists
 	}
 
 	tfs.pieceMutexes[pieceIndex].Lock()
