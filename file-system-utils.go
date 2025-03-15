@@ -1,30 +1,34 @@
 package main
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"io"
 	"os"
 )
 
-func findNumBlocksLastPiece(info *InfoDict, numBlocksPerPiece int64) int64 {
-	expectedTotalLength := int64(info.NumPieces) * info.PieceLength
-	sizeOfLastPiece := expectedTotalLength - info.Length // this is the size of last piece
-	return ceilDiv(sizeOfLastPiece, BlockSize)
+func verifySHA1(data []byte, expectedHash [20]byte) bool {
+	computedHash := sha1.Sum(data)
+	return computedHash == expectedHash
 }
 
-func populatePiecesSlice(torrent *Torrent, numBlocksPerPiece int64) []*TorrentPiece {
+func populatePiecesSlice(torrent *Torrent) []*TorrentPiece {
 	pieces := make([]*TorrentPiece, torrent.Info.NumPieces)
 
 	for pieceIndex := range torrent.Info.NumPieces {
 		var pieceLength int64
+		var numBlocksInPiece int64
 		if pieceIndex == torrent.Info.NumPieces-1 {
-			// this is the last piece whose length may be smaller than rest pieces
+			/* LAST PIECE : May be smaller than the rest */
 			pieceLength = torrent.Info.Length - ((torrent.Info.PieceLength) * int64(torrent.Info.NumPieces-1))
-
+			numBlocksInPiece = ceilDiv(pieceLength, BlockSize)
 		} else {
+			/* REGULAR PIECE */
+			numBlocksInPiece = assertAndReturnPerfectDivision(torrent.Info.PieceLength, int64(BlockSize))
 			pieceLength = torrent.Info.PieceLength
 		}
-		pieces[pieceIndex] = NewTorrentPiece(pieceIndex, pieceLength, numBlocksPerPiece, torrent.Info.Pieces[pieceIndex])
+
+		pieces[pieceIndex] = NewTorrentPiece(pieceIndex, pieceLength, numBlocksInPiece, torrent.Info.Pieces[pieceIndex])
 	}
 	return pieces
 }
