@@ -81,7 +81,7 @@ func findBlockIndex(relativeOffset int64) (int64, error) {
 func findBlockLength(blockIndex int64, pieceLength int64, numBlocksInPiece int64) int64 {
 	if blockIndex == numBlocksInPiece-1 {
 		// if last Block
-		return pieceLength - (blockIndex-1)*BlockSize
+		return pieceLength - (blockIndex)*BlockSize
 	} else {
 		return BlockSize
 	}

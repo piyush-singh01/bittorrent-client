@@ -87,7 +87,7 @@ func NewTorrentFileSystemSingleFile(torrent *Torrent, dirName string, pieces []*
 		fileOffset:   fileOffset,
 		pieceLength:  torrent.Info.PieceLength,
 		pieces:       pieces,
-		pieceMutexes: make([]sync.RWMutex, 0),
+		pieceMutexes: make([]sync.RWMutex, numPieces),
 		numPieces:    numPieces,
 
 		complete:          false,
@@ -123,7 +123,7 @@ func NewTorrentFileSystemMultiFile(torrent *Torrent, dirName string, pieces []*T
 		fileOffset:   fileOffset,
 		pieceLength:  torrent.Info.PieceLength,
 		pieces:       pieces,
-		pieceMutexes: make([]sync.RWMutex, 0),
+		pieceMutexes: make([]sync.RWMutex, numPieces),
 		numPieces:    numPieces,
 
 		complete:          false,
