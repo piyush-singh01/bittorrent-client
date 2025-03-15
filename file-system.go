@@ -10,8 +10,6 @@ import (
 	"sync"
 )
 
-const BlockSize = 1 << 14 // 16KB
-
 type RequestType int
 
 const (
@@ -282,11 +280,6 @@ func (tfs *TorrentFileSystem) validateRequest(requestType RequestType, pieceInde
 		return 0, 0, ErrOutOfRange("piece index")
 	}
 
-	// validation: length is equal to block size
-	if length != BlockSize {
-		return 0, 0, ErrInvalidBlockLength
-	}
-
 	// validation: has the complete piece for `Read` and does not has the block for `Write`
 	blockIndex, err := findBlockIndex(relativeOffset)
 	if err != nil {
@@ -302,6 +295,11 @@ func (tfs *TorrentFileSystem) validateRequest(requestType RequestType, pieceInde
 			// invalid request type
 			return 0, 0, errors.New("neither read nor write")
 		}
+	}
+
+	// validation: length is equal to block size
+	if length != findBlockLength(blockIndex, tfs.pieces[pieceIndex].length, tfs.pieces[pieceIndex].numBlocksInPiece) {
+		return 0, 0, ErrInvalidBlockLength
 	}
 
 	// validation: relative offset does not lie outside the piece
@@ -422,7 +420,7 @@ func (tfs *TorrentFileSystem) ReadPiece(pieceIndex int64) (int64, []byte, error)
 
 	absoluteOffset := pieceIndex * tfs.pieceLength
 	offsetToReadTill := min(absoluteOffset+tfs.pieceLength, tfs.totalLength) // min for the last piece
-	lengthToRead := absoluteOffset - offsetToReadTill
+	lengthToRead := offsetToReadTill - absoluteOffset
 
 	/* LOCK THE PIECE MUTEX */
 	tfs.pieceMutexes[pieceIndex].RLock()

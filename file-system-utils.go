@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+const BlockSize = 1 << 14 // 16KB
+
 func verifySHA1(data []byte, expectedHash [20]byte) bool {
 	computedHash := sha1.Sum(data)
 	return computedHash == expectedHash
@@ -74,4 +76,13 @@ func findBlockIndex(relativeOffset int64) (int64, error) {
 		return int64(0), ErrOffsetNotDivisibleByBlockSize(relativeOffset, BlockSize)
 	}
 	return relativeOffset / BlockSize, nil
+}
+
+func findBlockLength(blockIndex int64, pieceLength int64, numBlocksInPiece int64) int64 {
+	if blockIndex == numBlocksInPiece-1 {
+		// if last Block
+		return pieceLength - (blockIndex-1)*BlockSize
+	} else {
+		return BlockSize
+	}
 }
