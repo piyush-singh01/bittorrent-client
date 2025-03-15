@@ -7,9 +7,10 @@ import (
 
 /* GENERAL */
 
-var ErrInvalidRequest = func(err error) error { return fmt.Errorf("invalid request exception: %v", err) }
+var ErrInvalidRequest = func(err error) error { return errors.Join(errors.New("invalid request exception"), err) }
 var ErrFlawInLogic = func(errMsg string) error { return fmt.Errorf("flaw in logic: %s", errMsg) }
-var ErrNullObject = func(errMsg string) error { return fmt.Errorf("null object exception: %v", errMsg) }
+var ErrNullObject = func(errMsg string) error { return fmt.Errorf("null object exception: %s", errMsg) }
+var ErrOutOfRange = func(errMsg string) error { return fmt.Errorf("index out of range: %s", errMsg) }
 
 /* KEYS */
 
@@ -26,20 +27,29 @@ var ErrAllocatingBytes = func(fileName string) error { return fmt.Errorf("error 
 
 /* READ-WRITE*/
 
-var ErrReadingFile = func(fileName string, err error) error { return fmt.Errorf("error reading file %s: %v", fileName, err) }
-var ErrShortRead = func(fileName string, err error) error {
-	return fmt.Errorf("error reading complete range %s : %v", fileName, err)
+var ErrReadingFile = func(fileName string, err error) error {
+	return errors.Join(fmt.Errorf("error reading file %s", fileName), err)
 }
-
-var ErrWritingFile = func(fileName string, err error) error { return fmt.Errorf("error writing file %s: %v", fileName, err) }
+var ErrShortRead = func(fileName string, err error) error {
+	return errors.Join(fmt.Errorf("error reading complete range %s", fileName), err)
+}
+var ErrWritingFile = func(fileName string, err error) error {
+	return errors.Join(fmt.Errorf("error writing file %s: %v", fileName), err)
+}
 var ErrShortWrite = func(fileName string, err error) error {
-	return fmt.Errorf("error writing complete range %s : %v", fileName, err)
+	return errors.Join(fmt.Errorf("error writing complete range %s : %v", fileName), err)
 }
 
 /* TORRENT FILE SYSTEM */
 
 var ErrBlockAlreadyExists = errors.New("block already exists")
 var ErrPieceAlreadyExists = errors.New("piece already exists")
+
+var ErrBlockDoesNotExist = errors.New("block does not exist")
+var ErrPieceDoesNotExist = errors.New("piece does not exist")
+
+var ErrInvalidBlockLength = errors.New("invalid block length")
+var ErrHashVerificationFailed = errors.New("calculated hash does not match the expected hash")
 
 /* MATH ASSERTIONS */
 
