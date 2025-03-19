@@ -34,10 +34,10 @@ var ErrShortRead = func(fileName string, err error) error {
 	return errors.Join(fmt.Errorf("error reading complete range %s", fileName), err)
 }
 var ErrWritingFile = func(fileName string, err error) error {
-	return errors.Join(fmt.Errorf("error writing file %s: %v", fileName), err)
+	return errors.Join(fmt.Errorf("error writing file %s", fileName), err)
 }
 var ErrShortWrite = func(fileName string, err error) error {
-	return errors.Join(fmt.Errorf("error writing complete range %s : %v", fileName), err)
+	return errors.Join(fmt.Errorf("error writing complete range %s", fileName), err)
 }
 
 /* TORRENT FILE SYSTEM */
