@@ -359,6 +359,9 @@ func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64,
 	tfs.pieces[pieceIndex].hasBlock[blockIndex] = true
 	tfs.pieces[pieceIndex].numBlocksCompleted++
 
+	log.Printf("number of blocks completed :%d", tfs.pieces[pieceIndex].numBlocksCompleted)
+	log.Printf("number of blocks in piece :%d", tfs.pieces[pieceIndex].numBlocksInPiece)
+
 	/* IF ALL BLOCKS ARE COMPLETED */
 	if tfs.pieces[pieceIndex].numBlocksCompleted == tfs.pieces[pieceIndex].numBlocksInPiece {
 		tfs.pieces[pieceIndex].validateCompletePiece(tfs)
@@ -408,10 +411,6 @@ func (tfs *TorrentFileSystem) readPieceForValidation(pieceIndex int64) (int64, [
 	/* REQUEST VALIDATION */
 	if pieceIndex < 0 || pieceIndex >= tfs.numPieces {
 		return 0, nil, ErrInvalidRequest(ErrOutOfRange("piece index"))
-	}
-
-	if !tfs.pieces[pieceIndex].complete {
-		return 0, nil, ErrInvalidRequest(ErrPieceDoesNotExist)
 	}
 
 	absoluteOffset := pieceIndex * tfs.pieceLength
