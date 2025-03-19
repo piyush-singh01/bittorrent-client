@@ -77,7 +77,7 @@ func NewTorrentFile(path []string, length int64, offset int64) *TorrentFile {
 
 func NewTorrentFileSystemSingleFile(torrent *Torrent, dirName string, pieces []*TorrentPiece) *TorrentFileSystem {
 	torrentFile := NewTorrentFile([]string{dirName, torrent.Info.Name}, torrent.Info.Length, 0)
-	fileOffset := []int64{0, torrent.Info.Length}
+	fileOffset := []int64{0, torrent.Info.Length} // has the end offset as well
 
 	numPieces := ceilDiv(torrent.Info.Length, torrent.Info.PieceLength)
 	return &TorrentFileSystem{
@@ -222,11 +222,13 @@ func (tf *TorrentFile) readWriteOpen() error {
 }
 
 func (tf *TorrentFile) close() {
-	tf.mu.Lock()
-	defer tf.mu.Unlock()
-
-	CloseReadCloserWithLog(tf.osFile)
-	tf.osFile = nil
+	if tf.osFile != nil {
+		log.Printf("The file is open, closing file: %s", tf.path)
+		CloseReadCloserWithLog(tf.osFile)
+		tf.osFile = nil
+	} else {
+		log.Printf("The file is already closed: %s", tf.path)
+	}
 }
 
 func (tf *TorrentFile) readFileAtOffsetAndLength(offset int64, length int64) ([]byte, error) {
@@ -236,7 +238,6 @@ func (tf *TorrentFile) readFileAtOffsetAndLength(offset int64, length int64) ([]
 	if err := tf.readOpen(); err != nil {
 		return nil, err
 	}
-	defer tf.close()
 
 	// the offset is relative to the file
 	buffer := make([]byte, length)
@@ -260,7 +261,6 @@ func (tf *TorrentFile) writeFileAtOffset(offset int64, data []byte) (int, error)
 	if err := tf.readWriteOpen(); err != nil {
 		return 0, err
 	}
-	defer tf.close()
 
 	n, err := tf.osFile.WriteAt(data, offset)
 	if err != nil {
@@ -280,7 +280,7 @@ func (tfs *TorrentFileSystem) validateRequest(requestType RequestType, pieceInde
 		return 0, 0, ErrOutOfRange("piece index")
 	}
 
-	// validation: has the complete piece for `Read` and does not has the block for `Write`
+	// validation: has the complete piece for `Read` and does not have the block for `Write`
 	blockIndex, err := findBlockIndex(relativeOffset)
 	if err != nil {
 		return 0, 0, err
@@ -303,7 +303,8 @@ func (tfs *TorrentFileSystem) validateRequest(requestType RequestType, pieceInde
 	}
 
 	// validation: relative offset does not lie outside the piece
-	if relativeOffset > tfs.pieces[pieceIndex].length {
+	// in case of equality as well, it lies on the next piece
+	if relativeOffset >= tfs.pieces[pieceIndex].length {
 		return 0, 0, ErrOutOfRange("relative offset")
 	}
 
@@ -316,48 +317,6 @@ func (tfs *TorrentFileSystem) validateRequest(requestType RequestType, pieceInde
 	}
 
 	return absoluteOffset, offsetToProcessTill, nil
-}
-
-func (tp *TorrentPiece) validateCompletePiece(torrentFileSystem *TorrentFileSystem) {
-	retries := 3
-	for i := 0; i < retries; i++ {
-		_, piece, err := torrentFileSystem.ReadPiece(int64(tp.index))
-		if err != nil {
-			log.Printf("error reading piece: %v", err)
-			if i < retries-1 {
-				log.Printf("retrying")
-			}
-			continue
-		}
-		if !verifySHA1(piece, tp.expectedHash) {
-			log.Printf("calculated hash does not match expected hash for piece index: %d\n", tp.index)
-			break
-		}
-
-		// validate the piece, if everything is validated
-		tp.complete = true
-		torrentFileSystem.hasPiece[tp.index] = true
-		torrentFileSystem.numPiecesObtained++
-
-		// TODO: Broadcast `have`, update bitfield etc.
-		if torrentFileSystem.numPieces == torrentFileSystem.numPiecesObtained {
-			// TODO: if all pieces are obtained
-		}
-		return
-	}
-
-	log.Printf("piece can not be validated, invalidating the piece")
-	tp.invalidatePiece(torrentFileSystem)
-	return
-}
-
-func (tp *TorrentPiece) invalidatePiece(torrentFileSystem *TorrentFileSystem) {
-	tp.complete = false
-	for i := range tp.hasBlock {
-		tp.hasBlock[i] = false
-	}
-	tp.numBlocksCompleted = 0
-	torrentFileSystem.hasPiece[tp.index] = false
 }
 
 func (tfs *TorrentFileSystem) ReadBlock(pieceIndex int64, relativeOffset int64, length int64) (int64, []byte, error) {
@@ -407,7 +366,44 @@ func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64,
 	return lengthWritten, nil
 }
 
-func (tfs *TorrentFileSystem) ReadPiece(pieceIndex int64) (int64, []byte, error) {
+func (tp *TorrentPiece) validateCompletePiece(torrentFileSystem *TorrentFileSystem) {
+	retries := 3
+	for i := 0; i < retries; i++ {
+		_, piece, err := torrentFileSystem.readPieceForValidation(int64(tp.index))
+		if err != nil {
+			log.Printf("error reading piece: %v", err)
+			if i < retries-1 {
+				log.Printf("retrying")
+			}
+			continue
+		}
+		if !verifySHA1(piece, tp.expectedHash) {
+			log.Printf("calculated hash does not match expected hash for piece index: %d\n", tp.index)
+			break
+		}
+
+		// validate the piece, if everything is validated
+		tp.complete = true
+
+		/* critical section */
+		torrentFileSystem.mu.Lock()
+		torrentFileSystem.hasPiece[tp.index] = true
+		torrentFileSystem.numPiecesObtained++
+		torrentFileSystem.mu.Unlock()
+
+		// TODO: Broadcast `have`, update bitfield etc.
+		if torrentFileSystem.numPieces == torrentFileSystem.numPiecesObtained {
+			// TODO: if all pieces are obtained
+		}
+		return
+	}
+
+	log.Printf("piece can not be validated, invalidating the piece")
+	tp.invalidatePiece(torrentFileSystem)
+	return
+}
+
+func (tfs *TorrentFileSystem) readPieceForValidation(pieceIndex int64) (int64, []byte, error) {
 
 	/* REQUEST VALIDATION */
 	if pieceIndex < 0 || pieceIndex >= tfs.numPieces {
@@ -422,12 +418,17 @@ func (tfs *TorrentFileSystem) ReadPiece(pieceIndex int64) (int64, []byte, error)
 	offsetToReadTill := min(absoluteOffset+tfs.pieceLength, tfs.totalLength) // min for the last piece
 	lengthToRead := offsetToReadTill - absoluteOffset
 
-	/* LOCK THE PIECE MUTEX */
-	tfs.pieceMutexes[pieceIndex].RLock()
-	defer tfs.pieceMutexes[pieceIndex].RUnlock()
-
 	/* READ FILE BY FILE */
 	return tfs.readFileByFile(lengthToRead, absoluteOffset, offsetToReadTill)
+}
+
+func (tp *TorrentPiece) invalidatePiece(torrentFileSystem *TorrentFileSystem) {
+	tp.complete = false
+	for i := range tp.hasBlock {
+		tp.hasBlock[i] = false
+	}
+	tp.numBlocksCompleted = 0
+	torrentFileSystem.hasPiece[tp.index] = false
 }
 
 func (tfs *TorrentFileSystem) readFileByFile(lengthToRead int64, absoluteOffset int64, offsetToReadTill int64) (int64, []byte, error) {

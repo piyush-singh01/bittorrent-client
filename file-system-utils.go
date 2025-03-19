@@ -17,7 +17,7 @@ func verifySHA1(data []byte, expectedHash [20]byte) bool {
 func populatePiecesSlice(torrent *Torrent) []*TorrentPiece {
 	pieces := make([]*TorrentPiece, torrent.Info.NumPieces)
 
-	for pieceIndex := range torrent.Info.NumPieces {
+	for pieceIndex := uint(0); pieceIndex < torrent.Info.NumPieces; pieceIndex++ {
 		var pieceLength int64
 		var numBlocksInPiece int64
 		if pieceIndex == torrent.Info.NumPieces-1 {
