@@ -88,15 +88,15 @@ func PerformHandshake(conn *PeerConnection, session *TorrentSession, peerId [20]
 		return fmt.Errorf("error sending handshake message: %v", err)
 	}
 
-	log.Printf("sent handshake to peerConnection %s", conn.peerIdStr)
+	log.Printf("sent handshake to peer %s", conn.peerIdStr)
 	peerHandshake, err := receiveHandshake(conn, session)
 	if err != nil {
-		return fmt.Errorf("error receiving handshake message from peerConnection: %v", err)
+		return fmt.Errorf("error receiving handshake message from peer: %v", err)
 	}
-	log.Printf("received handshake from peerConnection %s", conn.peerIdStr)
+	log.Printf("received handshake from peer %s", conn.peerIdStr)
 
 	if err = peerHandshake.validate(torrent); err != nil {
-		return fmt.Errorf("error validating received handshake from peerConnection %s: %v", conn.peerIdStr, err)
+		return fmt.Errorf("error validating received handshake from peer %s: %v", conn.peerIdStr, err)
 	}
 	log.Print("info-hash validated")
 	return nil
@@ -106,7 +106,7 @@ func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *Tor
 	serializedHandshake := message.serialize()
 	n, err = conn.WriteBytes(serializedHandshake, session)
 	if err != nil {
-		return 0, fmt.Errorf("error sending handshake message to peerConnection: %v", err)
+		return 0, fmt.Errorf("error sending handshake message to peer: %v", err)
 	}
 	return
 }
@@ -114,15 +114,15 @@ func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *Tor
 func receiveHandshake(conn *PeerConnection, session *TorrentSession) (*HandshakeMessage, error) {
 	buffer, n, err := conn.ReadBytes(session)
 	if err != nil {
-		return nil, fmt.Errorf("error receiving handshake from peerConnection: %v", err)
+		return nil, fmt.Errorf("error receiving handshake from peer: %v", err)
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("no handshake recieved from peerConnection")
+		return nil, fmt.Errorf("no handshake recieved from peer")
 	}
 
 	peerHandshake := parseHandshake(buffer[:n])
 	if peerHandshake == nil {
-		return nil, fmt.Errorf("no handshake recieved from peerConnection")
+		return nil, fmt.Errorf("no handshake recieved from peer")
 	}
 
 	return peerHandshake, nil
@@ -133,7 +133,7 @@ func HandleHandshake(conn net.Conn, torrentSession *TorrentSession) (*HandshakeM
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("received handshake from incoming peerConnection")
+	log.Printf("received handshake from incoming peer")
 
 	if err = receivedHandshake.validate(torrentSession.torrent); err != nil {
 		return nil, fmt.Errorf("error validating handshake from connection: %v", err)
@@ -144,24 +144,24 @@ func HandleHandshake(conn net.Conn, torrentSession *TorrentSession) (*HandshakeM
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("sent handshake to incoming peerConnection")
+	log.Printf("sent handshake to incoming peer")
 	return receivedHandshake, nil
 }
 
 func acceptHandshake(conn net.Conn) (*HandshakeMessage, error) {
 	buffer := make([]byte, 16384)
 	n, err := conn.Read(buffer)
-	log.Printf("handshake received from peerConnection")
+	log.Printf("handshake received from peer")
 	if err != nil {
-		return nil, fmt.Errorf("error accepting handshake from peerConnection: %v", err)
+		return nil, fmt.Errorf("error accepting handshake from peer: %v", err)
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("no handshake recieved from peerConnection")
+		return nil, fmt.Errorf("no handshake recieved from peer")
 	}
 
 	peerHandshake := parseHandshake(buffer[:n])
 	if peerHandshake == nil {
-		return nil, fmt.Errorf("no handshake recieved from peerConnection")
+		return nil, fmt.Errorf("no handshake recieved from peer")
 	}
 	return peerHandshake, nil
 }
@@ -170,7 +170,7 @@ func respondHandshake(conn net.Conn, message *HandshakeMessage) (n int, err erro
 	serializedHandshake := message.serialize()
 	n, err = conn.Write(serializedHandshake)
 	if err != nil {
-		return 0, fmt.Errorf("error responding to handshake by peerConnection: %v", err)
+		return 0, fmt.Errorf("error responding to handshake by peer: %v", err)
 	}
 	return
 }
