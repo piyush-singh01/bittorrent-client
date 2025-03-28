@@ -62,7 +62,7 @@ func main() {
 	/************************ STATE HANDLER ************************/
 
 	state := NewTorrentState(torrent.Info.Length)
-	torrentSession.currentState = state
+	torrentSession.state = state
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

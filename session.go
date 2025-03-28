@@ -25,7 +25,7 @@ type TorrentSession struct {
 	peerConnection map[string]*PeerConnection // dictionary of peer connections, look up using peer id
 	quitChannel    chan *PeerConnection       // A quitter to terminate peer connections
 
-	currentState *TorrentState
+	state *TorrentState
 
 	/* Tickers */
 	keepAliveTicker *time.Ticker
