@@ -15,8 +15,6 @@ type RateTrackerConfigurable struct {
 }
 
 // RateTracker All operations on this rate tracker are atomic
-// TODO: A single global mutex might become a performance bottleneck. Make something like a per peer mutex.
-// May be we can have at least two separate mutexes; one for download and one for upload
 type RateTracker struct {
 	conf *RateTrackerConfigurable
 
@@ -96,7 +94,6 @@ func (rt *RateTracker) StartTotalSpeedCalculator() {
 				if speed < rt.conf.minimumSpeedThreshold { // Threshold for removing negligible speeds
 					rt.downloadSpeed.Delete(peerId)
 				} else {
-					// TODO [Fatal]: Deleting the current key is safe but not adding the current key
 					rt.downloadSpeed.Put(peerId, speed)
 				}
 			}
@@ -164,7 +161,7 @@ func (rt *RateTracker) RecordDownload(peerId string, bytes int) {
 
 	prevDownloadedBytes, _ := rt.downloadedBytes.Get(peerId)
 	rt.downloadedBytes.Put(peerId, prevDownloadedBytes+int64(bytes))
-	rt.CalculateDownloadSpeed(peerId)
+	rt.calculateDownloadSpeed(peerId)
 }
 
 func (rt *RateTracker) RecordUpload(peerId string, bytes int) {
@@ -178,7 +175,7 @@ func (rt *RateTracker) RecordUpload(peerId string, bytes int) {
 
 	prevUploadedBytes, _ := rt.uploadedBytes.Get(peerId)
 	rt.uploadedBytes.Put(peerId, prevUploadedBytes+int64(bytes))
-	rt.CalculateUploadSpeed(peerId)
+	rt.calculateUploadSpeed(peerId)
 }
 
 func (rt *RateTracker) GetDownloadSpeed(peerId string) float64 {
@@ -197,7 +194,7 @@ func (rt *RateTracker) GetUploadSpeed(peerId string) float64 {
 	return uploadSpeed
 }
 
-func (rt *RateTracker) CalculateDownloadSpeed(peerId string) {
+func (rt *RateTracker) calculateDownloadSpeed(peerId string) {
 	peerLastDownloadTime, exists := rt.lastDownloadTime.Get(peerId)
 	if !exists {
 		log.Fatalf("[fatal] flaw in logic while calculating rate")
@@ -215,7 +212,7 @@ func (rt *RateTracker) CalculateDownloadSpeed(peerId string) {
 	}
 }
 
-func (rt *RateTracker) CalculateUploadSpeed(peerId string) {
+func (rt *RateTracker) calculateUploadSpeed(peerId string) {
 	peerLastUploadTime, exists := rt.lastUploadTime.Get(peerId)
 	if !exists {
 		log.Fatalf("[fatal] flaw in logic while calculating rate")
