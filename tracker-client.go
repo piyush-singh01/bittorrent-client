@@ -166,7 +166,7 @@ func (tc *TrackerClient) TrackerPollHandler(session *TorrentSession) {
 		}
 
 		<-tc.trackerPollTicker.C
-		left, downloaded, uploaded := session.currentState.GetState()
+		left, downloaded, uploaded := session.state.GetState()
 		trackerResponse, err := tc.GetTrackerResponse(uploaded, downloaded, left)
 		if err != nil {
 			log.Print(err)
@@ -196,7 +196,7 @@ func (tc *TrackerClient) HandleTrackerResponse(trackerResponse *TrackerResponse,
 
 			if err = PerformHandshake(conn, torrentSession, torrentSession.localPeerId); err != nil {
 				log.Printf("error performing handshake with peer %s: %v, closing connection", conn.peerIdStr, err)
-				conn.CloseConnection(torrentSession)
+				conn.CloseConnection()
 				return
 			}
 			conn.StartReaderAndWriter(torrentSession)

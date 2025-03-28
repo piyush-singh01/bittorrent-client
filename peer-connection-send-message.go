@@ -10,7 +10,7 @@ import (
 // instead of the whole session pointer
 
 func (pc *PeerConnection) SendKeepAlive(session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewKeepAliveMessage(), session)
+	n, err = pc.WriteMessage(NewKeepAliveMessage(), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'keep-alive' to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'keep-alive' to peer %s: %v", pc.peerIdStr, err)
@@ -19,7 +19,7 @@ func (pc *PeerConnection) SendKeepAlive(session *TorrentSession) (n int, err err
 }
 
 func (pc *PeerConnection) SendChoke(session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewChokeMessage(), session)
+	n, err = pc.WriteMessage(NewChokeMessage(), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'choke' to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'choke' to peer %s: %v", pc.peerIdStr, err)
@@ -28,7 +28,7 @@ func (pc *PeerConnection) SendChoke(session *TorrentSession) (n int, err error) 
 }
 
 func (pc *PeerConnection) SendUnchoke(session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewUnchokeMessage(), session)
+	n, err = pc.WriteMessage(NewUnchokeMessage(), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'unchoke' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'unchoke' to peer %s: %v", pc.peerIdStr, err)
@@ -37,7 +37,7 @@ func (pc *PeerConnection) SendUnchoke(session *TorrentSession) (n int, err error
 }
 
 func (pc *PeerConnection) SendInterested(session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewInterestedMessage(), session)
+	n, err = pc.WriteMessage(NewInterestedMessage(), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'interested' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'interested' message to peer %s: %v", pc.peerIdStr, err)
@@ -46,7 +46,7 @@ func (pc *PeerConnection) SendInterested(session *TorrentSession) (n int, err er
 }
 
 func (pc *PeerConnection) SendNotInterested(session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewNotInterestedMessage(), session)
+	n, err = pc.WriteMessage(NewNotInterestedMessage(), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'not-interested' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'not-interested' message to peer %s: %v", pc.peerIdStr, err)
@@ -55,7 +55,7 @@ func (pc *PeerConnection) SendNotInterested(session *TorrentSession) (n int, err
 }
 
 func (pc *PeerConnection) SendHave(pieceIndex uint32, session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewHaveMessage(pieceIndex), session)
+	n, err = pc.WriteMessage(NewHaveMessage(pieceIndex), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'have' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'have' message to peer %s: %v", pc.peerIdStr, err)
@@ -68,7 +68,7 @@ func (pc *PeerConnection) SendBitfield(session *TorrentSession) (n int, err erro
 		return 0, fmt.Errorf("local bitfield is nil, can not send bitfield")
 	}
 
-	n, err = pc.WriteMessage(NewBitfieldMessage(session.bitfield), session)
+	n, err = pc.WriteMessage(NewBitfieldMessage(session.bitfield), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'bitfield' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'bitfield' message to peer %s: %v", pc.peerIdStr, err)
@@ -77,7 +77,7 @@ func (pc *PeerConnection) SendBitfield(session *TorrentSession) (n int, err erro
 }
 
 func (pc *PeerConnection) SendRequest(index uint32, begin uint32, length uint32, session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewRequestMessage(index, begin, length), session)
+	n, err = pc.WriteMessage(NewRequestMessage(index, begin, length), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'request' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'request' message to peer %s: %v", pc.peerIdStr, err)
@@ -86,7 +86,7 @@ func (pc *PeerConnection) SendRequest(index uint32, begin uint32, length uint32,
 }
 
 func (pc *PeerConnection) SendPiece(index uint32, begin uint32, block []byte, session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewPieceMessage(index, begin, block), session)
+	n, err = pc.WriteMessage(NewPieceMessage(index, begin, block), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'piece' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'piece' message to peer %s: %v", pc.peerIdStr, err)
@@ -95,7 +95,7 @@ func (pc *PeerConnection) SendPiece(index uint32, begin uint32, block []byte, se
 }
 
 func (pc *PeerConnection) SendCancel(index uint32, begin uint32, length uint32, session *TorrentSession) (n int, err error) {
-	n, err = pc.WriteMessage(NewCancelMessage(index, begin, length), session)
+	n, err = pc.WriteMessage(NewCancelMessage(index, begin, length), session.rateTracker)
 	if err != nil {
 		log.Printf("error sending 'cancel' message to peer %s: %v", pc.peerIdStr, err)
 		return 0, fmt.Errorf("error sending 'cancel' message to peer %s: %v", pc.peerIdStr, err)

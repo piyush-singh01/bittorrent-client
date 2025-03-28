@@ -104,7 +104,7 @@ func PerformHandshake(conn *PeerConnection, session *TorrentSession, peerId [20]
 
 func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *TorrentSession) (n int, err error) {
 	serializedHandshake := message.serialize()
-	n, err = conn.WriteBytes(serializedHandshake, session)
+	n, err = conn.WriteBytes(serializedHandshake, session.rateTracker)
 	if err != nil {
 		return 0, fmt.Errorf("error sending handshake message to peer: %v", err)
 	}
@@ -112,7 +112,7 @@ func sendHandshake(conn *PeerConnection, message *HandshakeMessage, session *Tor
 }
 
 func receiveHandshake(conn *PeerConnection, session *TorrentSession) (*HandshakeMessage, error) {
-	buffer, n, err := conn.ReadBytes(session)
+	buffer, n, err := conn.ReadBytes(session.rateTracker)
 	if err != nil {
 		return nil, fmt.Errorf("error receiving handshake from peer: %v", err)
 	}

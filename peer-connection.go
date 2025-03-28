@@ -150,7 +150,7 @@ func DialPeerWithTimeoutTCP(peer Peer, session *TorrentSession) (*PeerConnection
 
 /****************************** READ FROM PEER ******************************/
 
-func (pc *PeerConnection) ReadMessage(session *TorrentSession) (message *PeerMessage, n int, err error) {
+func (pc *PeerConnection) ReadMessage(rateTracker *RateTracker) (message *PeerMessage, n int, err error) {
 	buffer := make([]byte, ConnectionBufferSize)
 	n, err = pc.tcpConn.Read(buffer)
 	if err != nil {
@@ -162,12 +162,12 @@ func (pc *PeerConnection) ReadMessage(session *TorrentSession) (message *PeerMes
 		return nil, 0, err
 	}
 	log.Printf("read %d bytes; message of type %d from peer %s", n, message.MessageId, pc.peerIdStr)
-	session.rateTracker.RecordDownload(pc.peerIdStr, n)
+	rateTracker.RecordDownload(pc.peerIdStr, n)
 	pc.UpdateLastReadTime()
 	return
 }
 
-func (pc *PeerConnection) ReadBytes(session *TorrentSession) (data []byte, n int, err error) {
+func (pc *PeerConnection) ReadBytes(rateTracker *RateTracker) (data []byte, n int, err error) {
 	buffer := make([]byte, ConnectionBufferSize)
 	n, err = pc.tcpConn.Read(buffer)
 	if err != nil {
@@ -176,7 +176,7 @@ func (pc *PeerConnection) ReadBytes(session *TorrentSession) (data []byte, n int
 
 	log.Printf("read %d  bytes from peer %s", n, pc.peerIdStr)
 	data = buffer[:n]
-	session.rateTracker.RecordDownload(pc.peerIdStr, n)
+	rateTracker.RecordDownload(pc.peerIdStr, n)
 	pc.UpdateLastReadTime()
 	return
 }
@@ -187,7 +187,7 @@ func (pc *PeerConnection) UpdateLastReadTime() {
 
 /****************************** WRITE TO PEER ******************************/
 
-func (pc *PeerConnection) WriteMessage(message *PeerMessage, session *TorrentSession) (n int, err error) {
+func (pc *PeerConnection) WriteMessage(message *PeerMessage, rateTracker *RateTracker) (n int, err error) {
 	n, err = pc.tcpConn.Write(message.Serialize())
 	if err != nil {
 		return 0, err
@@ -195,11 +195,11 @@ func (pc *PeerConnection) WriteMessage(message *PeerMessage, session *TorrentSes
 
 	log.Printf("written %d bytes; message of type %d to peer %s", n, message.MessageId, pc.peerIdStr)
 	pc.UpdateLastWriteTime()
-	session.rateTracker.RecordUpload(pc.peerIdStr, n)
+	rateTracker.RecordUpload(pc.peerIdStr, n)
 	return
 }
 
-func (pc *PeerConnection) WriteBytes(data []byte, session *TorrentSession) (n int, err error) {
+func (pc *PeerConnection) WriteBytes(data []byte, rateTracker *RateTracker) (n int, err error) {
 	n, err = pc.tcpConn.Write(data)
 	if err != nil {
 		return 0, err
@@ -207,7 +207,7 @@ func (pc *PeerConnection) WriteBytes(data []byte, session *TorrentSession) (n in
 
 	log.Printf("written %d bytes to peer %s", n, pc.peerIdStr)
 	pc.UpdateLastWriteTime()
-	session.rateTracker.RecordUpload(pc.peerIdStr, n)
+	rateTracker.RecordUpload(pc.peerIdStr, n)
 	return
 }
 
