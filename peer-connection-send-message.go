@@ -5,10 +5,6 @@ import (
 	"log"
 )
 
-// TODO: We are passing the session only for rate tracker,
-// pass in the rate tracker only later on
-// instead of the whole session pointer
-
 func (pc *PeerConnection) SendKeepAlive(session *TorrentSession) (n int, err error) {
 	n, err = pc.WriteMessage(NewKeepAliveMessage(), session.rateTracker)
 	if err != nil {
