@@ -54,7 +54,7 @@ func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession,
 func (ts *TorrentSession) StartQuitter() {
 	for {
 		connection := <-ts.quitChannel
-		connection.CloseConnection(ts)
+		connection.CloseConnection()
 	}
 }
 
