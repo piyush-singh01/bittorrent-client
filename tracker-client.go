@@ -85,7 +85,6 @@ func (tr *TrackerResponse) String() string {
 	)
 }
 
-// TODO: [Fatal] We are sending the wrong `left`, `uploaded`, `downloaded` values in subsequent requests
 func (tc *TrackerClient) buildTrackerRequestUrl(uploaded int64, downloaded int64, left int64) (string, error) {
 	baseUrl, err := url.Parse(tc.announce)
 	if err != nil {
