@@ -1,13 +1,20 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
-	mathRand "math/rand"
-	"net"
-	"time"
 )
+
+type Pair[T, U any] struct {
+	first  T
+	second U
+}
+
+func MakePair[T, U any](first T, second U) Pair[T, U] {
+	return Pair[T, U]{first: first, second: second}
+}
 
 func CloseReadCloserWithLog(c io.ReadCloser) {
 	if err := c.Close(); err != nil {
@@ -15,34 +22,43 @@ func CloseReadCloserWithLog(c io.ReadCloser) {
 	}
 }
 
-func ceilDiv(a uint, b uint) uint {
+type Number interface {
+	int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64
+}
+
+func ceilDiv[T Number](a, b T) T {
+	if b == 0 {
+		panic("division by zero")
+	}
 	if a%b == 0 {
 		return a / b
 	}
 	return (a / b) + 1
 }
 
-func CloseConnectionWithLog(c net.Conn) {
-	if err := c.Close(); err != nil {
-		log.Printf("failed to close connection: %v", err)
+func assertAndReturnPerfectDivision[T Number](a, b T) T {
+	if b == 0 {
+		log.Fatalln("division by zero")
 	}
+	if a%b != 0 {
+		log.Fatalln("the division is not perfect and leaves a remainder")
+	}
+	return a / b
 }
 
-func selectSubset(n, k int) ([]int, error) {
-	if n < k {
-		return nil, fmt.Errorf("total elements must be at least %d", k)
+// generateLocalPeerId generates a Peer ID for the client.
+func generateLocalPeerId() ([20]byte, error) {
+	var localPeerId [20]byte
+
+	prefix := "-PTC001-"
+	copy(localPeerId[:], prefix)
+
+	randomBytes := make([]byte, 13)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return localPeerId, fmt.Errorf("failed to generate random bytes: %v", err)
 	}
+	copy(localPeerId[7:], randomBytes)
 
-	elements := make([]int, n)
-	for i := 0; i < n; i++ {
-		elements[i] = i
-	}
-
-	// Shuffle the slice
-	r := mathRand.New(mathRand.NewSource(time.Now().UnixNano())) // Seed the random number generator
-	r.Shuffle(n, func(i, j int) {
-		elements[i], elements[j] = elements[j], elements[i]
-	})
-
-	return elements[:k], nil
+	return localPeerId, nil
 }
