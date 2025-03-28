@@ -167,10 +167,7 @@ func (tc *TrackerClient) TrackerPollHandler(session *TorrentSession) {
 		}
 
 		<-tc.trackerPollTicker.C
-		// get upload, download, left data from somewhere
-		uploaded := int64(0)
-		downloaded := int64(0)
-		left := session.torrent.Info.Length
+		left, downloaded, uploaded := session.currentState.GetState()
 		trackerResponse, err := tc.GetTrackerResponse(uploaded, downloaded, left)
 		if err != nil {
 			log.Print(err)

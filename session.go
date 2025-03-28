@@ -6,13 +6,11 @@ import (
 
 type Configurable struct {
 	/* TCP-conn conf */
-	initialTcpConnectionTimeout time.Duration
-	listenerPort                uint16
+	tcpDialTimeout time.Duration
+	listenerPort   uint16
 
 	/* Keep Alive conf*/
 	keepAliveTickInterval time.Duration
-
-	/* Rate Tracker conf*/
 }
 
 type TorrentSession struct {
@@ -27,15 +25,17 @@ type TorrentSession struct {
 	peerConnection map[string]*PeerConnection // dictionary of peer connections, look up using peer id
 	quitChannel    chan *PeerConnection       // A quitter to terminate peer connections
 
+	currentState *TorrentState
+
 	/* Tickers */
 	keepAliveTicker *time.Ticker
 }
 
 func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession, error) {
 	configurable := &Configurable{
-		initialTcpConnectionTimeout: time.Second * 5,
-		listenerPort:                8888,
-		keepAliveTickInterval:       time.Second * 120,
+		tcpDialTimeout:        time.Second * 5,
+		listenerPort:          8888,
+		keepAliveTickInterval: time.Second * 120,
 	}
 	return &TorrentSession{
 		torrent:        torrent,
@@ -62,4 +62,5 @@ func (ts *TorrentSession) StartQuitter() {
 
 func (ts *TorrentSession) CleanUp() {
 	// stop all tickers
+	// stop all goroutines on main
 }
