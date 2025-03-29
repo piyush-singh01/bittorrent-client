@@ -264,9 +264,20 @@ func NewHaveMessage(pieceIndex uint32) *PeerMessage {
 	return NewPeerMessage(5, Have, payload)
 }
 
+func (p *PeerMessage) GetHaveMessagePayload() uint {
+	if p.MessageId == Have {
+		return uint(binary.BigEndian.Uint32(p.Payload[:4]))
+	}
+	return -1
+}
+
 func NewBitfieldMessage(bitset *Bitset) *PeerMessage {
 	payload := bitset.Serialize()
 	return NewPeerMessage(uint32(len(payload)+1), Bitfield, payload)
+}
+
+func (p *PeerMessage) GetBitfieldMessagePayload() *Bitset {
+	return ParseBitset(p.Payload)
 }
 
 func NewRequestMessage(index uint32, begin uint32, length uint32) *PeerMessage {

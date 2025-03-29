@@ -15,14 +15,19 @@ func (ts *TorrentSession) StartKeepAliveTicker() {
 func (ts *TorrentSession) KeepAliveHandler() {
 	for {
 		<-ts.keepAliveTicker.C
-		for peerIdStr, connection := range ts.peerConnection {
-			_, err := ts.SendKeepAlive(connection)
-			if err != nil {
-				log.Printf("failed to send keep alive to %s: %v", peerIdStr, err)
-				ts.quitChannel <- connection
-				continue
+		ts.connectedPeers.Range(func(key, value interface{}) bool {
+			peerIdStr := key.(string)
+			connection := value.(*PeerConnection)
+			if time.Since(connection.lastWriteTime) >= ts.configurable.keepAliveTickInterval {
+				_, err := connection.SendKeepAlive(ts)
+				if err != nil {
+					log.Printf("failed to send keep alive to %s: %v: sending connection to quit channel", peerIdStr, err)
+					ts.quitChannel <- connection
+					return true
+				}
+				log.Printf("keep alive sent to %s", peerIdStr)
 			}
-			log.Printf("keep alive sent to %s", peerIdStr)
-		}
+			return true
+		})
 	}
 }

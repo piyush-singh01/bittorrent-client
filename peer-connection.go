@@ -71,7 +71,7 @@ func NewPeerConnection(peer Peer, conn net.Conn) *PeerConnection {
 		peerChoking:    true,
 		peerInterested: false,
 
-		writeChannel: make(chan *PeerMessage, 1),
+		writeChannel: make(chan *PeerMessage, 10),
 
 		quitReaderChannel: make(chan struct{}, 1),
 		quitWriterChannel: make(chan struct{}, 1),

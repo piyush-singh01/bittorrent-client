@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"time"
 )
 
@@ -22,8 +23,11 @@ type TorrentSession struct {
 	localPeerId   [20]byte      // local peer id
 	trackerClient *TrackerClient
 
-	peerConnection map[string]*PeerConnection // dictionary of peer connections, look up using peer id
-	quitChannel    chan *PeerConnection       // A quitter to terminate peer connections
+	connectedPeers sync.Map // dictionary of peer connections, look up using peer id
+	unchokedPeers  sync.Map
+	//sentRequests
+
+	quitChannel chan *PeerConnection // A quitter to terminate peer connections
 
 	state *TorrentState
 
@@ -38,13 +42,12 @@ func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession,
 		keepAliveTickInterval: time.Second * 120,
 	}
 	return &TorrentSession{
-		torrent:        torrent,
-		configurable:   configurable,
-		localPeerId:    localPeerId,
-		peerConnection: make(map[string]*PeerConnection),
-		bitfield:       NewBitset(torrent.Info.NumPieces),
-		quitChannel:    make(chan *PeerConnection, 10),
-		listener:       nil,
+		torrent:      torrent,
+		configurable: configurable,
+		localPeerId:  localPeerId,
+		bitfield:     NewBitset(torrent.Info.NumPieces),
+		quitChannel:  make(chan *PeerConnection, 10),
+		listener:     nil,
 	}, nil
 }
 

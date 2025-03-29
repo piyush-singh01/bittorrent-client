@@ -5,6 +5,15 @@ import (
 	"log"
 )
 
+func (pc *PeerConnection) sendMessage(peerMessage *PeerMessage, session *TorrentSession) (n int, err error) {
+	n, err = pc.WriteMessage(peerMessage, session.rateTracker)
+	if err != nil {
+		log.Printf("error sending 'message - %d' to peer %s: %v", peerMessage.MessageId, pc.peerIdStr, err)
+		return 0, fmt.Errorf("error sending 'message - %d' to peer %s: %v", peerMessage.MessageId, pc.peerIdStr, err)
+	}
+	return
+}
+
 func (pc *PeerConnection) SendKeepAlive(session *TorrentSession) (n int, err error) {
 	n, err = pc.WriteMessage(NewKeepAliveMessage(), session.rateTracker)
 	if err != nil {
