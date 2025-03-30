@@ -182,6 +182,19 @@ func (b *Bitset) CountSetBits() uint {
 	return count
 }
 
+func (b *Bitset) AnySetBits() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for i := range b.bits {
+		for j := uint(0); j < uint(64); j++ {
+			if ((b.bits[i] >> j) & 1) == 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (b *Bitset) Size() uint {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -230,6 +243,7 @@ func (b *Bitset) Xor(other *Bitset) *Bitset {
 	other.mu.Lock()
 	defer b.mu.Unlock()
 	defer other.mu.Unlock()
+
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not XOR")
 		return nil
@@ -266,7 +280,8 @@ func (b *Bitset) AndNot(other *Bitset) *Bitset {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not AND NOT")
 		return nil
 	}
-	return b.And(other.Not())
+	otherInv := other.Not()
+	return b.And(otherInv)
 }
 
 func (b *Bitset) OrNot(other *Bitset) *Bitset {
@@ -274,5 +289,6 @@ func (b *Bitset) OrNot(other *Bitset) *Bitset {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not OR NOT")
 		return nil
 	}
-	return b.Or(other.Not())
+	otherInv := other.Not()
+	return b.Or(otherInv)
 }
