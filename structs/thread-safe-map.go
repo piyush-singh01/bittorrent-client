@@ -8,12 +8,14 @@ type MutexMap[V any] struct {
 }
 
 func NewMutexMap[V any]() *MutexMap[V] {
-	return &MutexMap[V]{}
+	return &MutexMap[V]{
+		store: make(map[string]V),
+	}
 }
 
 func (m *MutexMap[V]) ContainsKey(key string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	_, ok := m.store[key]
 	return ok
 }
@@ -43,7 +45,7 @@ func (m *MutexMap[V]) Delete(key string) {
 	delete(m.store, key)
 }
 
-func (m *MutexMap[V]) Range(f func(key string, value V) bool) {
+func (m *MutexMap[V]) Iterate(f func(key string, value V) bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, v := range m.store {
@@ -51,4 +53,20 @@ func (m *MutexMap[V]) Range(f func(key string, value V) bool) {
 			break
 		}
 	}
+}
+
+func (m *MutexMap[V]) ReadOnlyIterate(f func(key string, value V) bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for k, v := range m.store {
+		if !f(k, v) {
+			break
+		}
+	}
+}
+
+func (m *MutexMap[V]) Size() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.store)
 }
