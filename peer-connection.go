@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -31,21 +32,25 @@ import (
 
 // PeerConnection represents an active connection with a peerConnection
 type PeerConnection struct {
-	tcpConn        net.Conn
-	isActive       bool
-	piecesBitfield *Bitset
-
+	/* Immutable fields */
+	tcpConn   net.Conn
 	peerId    [20]byte
 	peerIdStr string
 
+	mu sync.RWMutex
+	/* Mutable Fields */
 	amChoking      bool
 	amInterested   bool
 	peerChoking    bool
 	peerInterested bool
 
+	isActive       bool
+	piecesBitfield *Bitset
+
 	lastWriteTime time.Time
 	lastReadTime  time.Time
 
+	/* Channels */
 	writeChannel chan *PeerMessage
 
 	quitReaderChannel chan struct{}
@@ -90,9 +95,10 @@ func (pc *PeerConnection) StartReaderAndWriter(session *TorrentSession) {
 	}
 	go pc.PeerReader(session)
 	go pc.PeerWriter(session)
+	session.InitializePeer(pc)
 }
 
-func NewPeerConnectionWithReaderAndWriter(peer Peer, conn net.Conn, session *TorrentSession) *PeerConnection {
+func CreatePeerConnectionAndStartReaderWriter(peer Peer, conn net.Conn, session *TorrentSession) {
 	var peerConnection = &PeerConnection{
 		tcpConn:        conn,
 		isActive:       false, // remove for now,
@@ -118,7 +124,8 @@ func NewPeerConnectionWithReaderAndWriter(peer Peer, conn net.Conn, session *Tor
 	}
 	go peerConnection.PeerReader(session)
 	go peerConnection.PeerWriter(session)
-	return peerConnection
+
+	session.InitializePeer(peerConnection)
 }
 
 func DialPeerWithTimeoutTCP(peer Peer, session *TorrentSession) (*PeerConnection, error) {

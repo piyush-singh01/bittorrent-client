@@ -67,10 +67,8 @@ func (l *Listener) StartListening(session *TorrentSession) error {
 			Port:   uint16(port),
 		}
 
-		peerConn := NewPeerConnectionWithReaderAndWriter(peer, conn, session)
+		CreatePeerConnectionAndStartReaderWriter(peer, conn, session)
 		log.Printf("peer connection created with reader and writer goroutines, with peer %s", receivedHandshake.PeerId)
-		
-		peerConn.writeChannel <- NewBitfieldMessage(session.bitfield)
 	}
 }
 

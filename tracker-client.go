@@ -200,7 +200,9 @@ func (tc *TrackerClient) HandleTrackerResponse(trackerResponse *TrackerResponse,
 				return
 			}
 			conn.StartReaderAndWriter(torrentSession)
-			conn.writeChannel <- NewBitfieldMessage(torrentSession.bitfield)
+
+			// critical section
+			mutex.Lock()
 			countSuccessfulHandshakes++
 			mutex.Unlock()
 

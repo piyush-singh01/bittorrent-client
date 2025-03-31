@@ -1,7 +1,7 @@
 package main
 
 import (
-	"sync"
+	"bittorrent-client/structs"
 	"time"
 )
 
@@ -14,17 +14,20 @@ type Configurable struct {
 	keepAliveTickInterval time.Duration
 }
 
-type TorrentSession struct {
-	torrent       *Torrent      // the parsed torrent
-	configurable  *Configurable // configurations
-	bitfield      *Bitset       // local bitfield
-	rateTracker   *RateTracker  // the rate tracker for torrent session
-	listener      *Listener     // listener for torrent session
-	localPeerId   [20]byte      // local peer id
-	trackerClient *TrackerClient
+// TODO: Concurrency Control here??
 
-	connectedPeers sync.Map // dictionary of peer connections, look up using peer id
-	unchokedPeers  sync.Map
+type TorrentSession struct {
+	torrent         *Torrent      // the parsed torrent
+	configurable    *Configurable // configurations
+	bitfield        *Bitset       // local bitfield
+	rateTracker     *RateTracker  // the rate tracker for torrent session
+	listener        *Listener     // listener for torrent session
+	localPeerId     [20]byte      // local peer id
+	trackerClient   *TrackerClient
+	bitfieldManager *BitfieldManager
+
+	connectedPeers structs.MutexMap[*PeerConnection] // dictionary of peer connections, look up using peer id
+	unchokedPeers  structs.MutexMap[*PeerConnection] // dictionary of peer connections, that we have unchoked curerently
 	//sentRequests
 
 	quitChannel chan *PeerConnection // A quitter to terminate peer connections
@@ -36,19 +39,34 @@ type TorrentSession struct {
 }
 
 func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession, error) {
+	selfBitfield := NewBitset(torrent.Info.NumPieces)
+	bitfieldManager := NewBitfieldManager(selfBitfield)
 	configurable := &Configurable{
 		tcpDialTimeout:        time.Second * 5,
 		listenerPort:          8888,
 		keepAliveTickInterval: time.Second * 120,
 	}
 	return &TorrentSession{
-		torrent:      torrent,
-		configurable: configurable,
-		localPeerId:  localPeerId,
-		bitfield:     NewBitset(torrent.Info.NumPieces),
-		quitChannel:  make(chan *PeerConnection, 10),
-		listener:     nil,
+		torrent:         torrent,
+		configurable:    configurable,
+		localPeerId:     localPeerId,
+		bitfield:        selfBitfield,
+		bitfieldManager: bitfieldManager,
+		quitChannel:     make(chan *PeerConnection, 10),
+		listener:        nil,
 	}, nil
+}
+
+/* HANDLE PEER CONNECTION */
+
+func (ts *TorrentSession) InitializePeer(peerConnection *PeerConnection) {
+	ts.connectedPeers.Put(peerConnection.peerIdStr, peerConnection)
+	ts.bitfieldManager.AddPeer(peerConnection.peerIdStr, peerConnection.piecesBitfield)
+	peerConnection.writeChannel <- NewBitfieldMessage(ts.bitfield)
+}
+
+func (ts *TorrentSession) RemovePeer(peerConnection *PeerConnection) {
+	ts.connectedPeers.Delete(peerConnection.peerIdStr)
 }
 
 /* QUITTER GOROUTINE */
