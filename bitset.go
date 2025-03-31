@@ -94,7 +94,7 @@ func (b *Bitset) Serialize() []byte {
 
 func (b *Bitset) checkOutOfBounds(v uint) {
 	if v >= b.size {
-		panic("out of bounds error")
+		log.Fatalf("bitset: out of bounds error")
 	}
 }
 
@@ -270,7 +270,6 @@ func (b *Bitset) Not() *Bitset {
 	defer b.mu.RUnlock()
 
 	return computeNot(b)
-
 }
 
 func computeNot(x *Bitset) *Bitset {
@@ -312,5 +311,4 @@ func (b *Bitset) OrNot(other *Bitset) *Bitset {
 	}
 
 	return computeOr(b, computeNot(other))
-
 }
