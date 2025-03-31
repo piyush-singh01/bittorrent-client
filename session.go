@@ -26,8 +26,8 @@ type TorrentSession struct {
 	trackerClient   *TrackerClient
 	bitfieldManager *BitfieldManager
 
-	connectedPeers structs.MutexMap[*PeerConnection] // dictionary of peer connections, look up using peer id
-	unchokedPeers  structs.MutexMap[*PeerConnection] // dictionary of peer connections, that we have unchoked curerently
+	connectedPeers structs.MutexMap[string, *PeerConnection] // dictionary of peer connections, look up using peer id
+	unchokedPeers  structs.MutexMap[string, *PeerConnection] // dictionary of peer connections, that we have unchoked curerently
 	//sentRequests
 
 	quitChannel chan *PeerConnection // A quitter to terminate peer connections
