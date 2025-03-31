@@ -15,9 +15,7 @@ func (ts *TorrentSession) StartKeepAliveTicker() {
 func (ts *TorrentSession) KeepAliveHandler() {
 	for {
 		<-ts.keepAliveTicker.C
-		ts.connectedPeers.Range(func(key, value interface{}) bool {
-			peerIdStr := key.(string)
-			connection := value.(*PeerConnection)
+		ts.connectedPeers.Iterate(func(peerIdStr string, connection *PeerConnection) bool {
 			if time.Since(connection.lastWriteTime) >= ts.configurable.keepAliveTickInterval {
 				_, err := connection.SendKeepAlive(ts)
 				if err != nil {
