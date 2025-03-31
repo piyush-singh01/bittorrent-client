@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"log"
+	"math/bits"
 	"sync"
 )
 
@@ -19,11 +20,11 @@ func NewBitset(n uint) *Bitset {
 	}
 }
 
-func ParseBitset(data []byte, selfBitfield *Bitset) (*Bitset, error) {
+func ParseAndValidateBitset(data []byte, selfBitfieldSize uint) (*Bitset, error) {
 	size := uint(len(data) * 8)
 	sizeBitset := ceilDiv(size, 64)
 
-	bits := make([]uint64, sizeBitset)
+	bitValues := make([]uint64, sizeBitset)
 	for i := uint(0); i < sizeBitset; i++ {
 		start := i * 8
 		end := (i + 1) * 8
@@ -37,25 +38,25 @@ func ParseBitset(data []byte, selfBitfield *Bitset) (*Bitset, error) {
 			copy(paddedChunk, chunk)
 			chunk = paddedChunk
 		}
-		bits[i] = binary.BigEndian.Uint64(chunk)
+		bitValues[i] = binary.BigEndian.Uint64(chunk)
 	}
 
 	peerBitset := &Bitset{
-		bits: bits,
+		bits: bitValues,
 		size: size,
 	}
-	if peerBitset.Validate(selfBitfield) {
+	if peerBitset.Validate(selfBitfieldSize) {
 		return peerBitset, nil
 	}
-	return nil, ErrBitsetSizeInvalid(selfBitfield.size, peerBitset.size)
+	return nil, ErrBitsetSizeInvalid(selfBitfieldSize, peerBitset.size)
 }
 
 // Validate the receiver here is the peer bitfield
-func (b *Bitset) Validate(selfBitfield *Bitset) bool {
+func (b *Bitset) Validate(selfBitfieldSize uint) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	if b.size == selfBitfield.size {
+	if b.size == selfBitfieldSize {
 		return true
 	}
 	return false
@@ -173,11 +174,7 @@ func (b *Bitset) CountSetBits() uint {
 
 	var count uint = 0
 	for i := range b.bits {
-		for j := uint(0); j < uint(64); j++ {
-			if ((b.bits[i] >> j) & 1) == 1 {
-				count++
-			}
-		}
+		count += uint(bits.OnesCount64(b.bits[i]))
 	}
 	return count
 }
@@ -186,10 +183,8 @@ func (b *Bitset) AnySetBits() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for i := range b.bits {
-		for j := uint(0); j < uint(64); j++ {
-			if ((b.bits[i] >> j) & 1) == 1 {
-				return true
-			}
+		if bits.OnesCount64(b.bits[i]) == 1 {
+			return true
 		}
 	}
 	return false
@@ -203,92 +198,119 @@ func (b *Bitset) Size() uint {
 }
 
 func (b *Bitset) And(other *Bitset) *Bitset {
-	b.mu.Lock()
-	other.mu.Lock()
-	defer b.mu.Unlock()
-	defer other.mu.Unlock()
+	b.mu.RLock()
+	other.mu.RLock()
+	defer b.mu.RUnlock()
+	defer other.mu.RUnlock()
 
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not compute AND")
 		return nil
 	}
 
-	result := NewBitset(b.size)
+	return computeAnd(b, other)
+}
+
+// computeAnd assumes bitsets are of equal sizes
+func computeAnd(x *Bitset, y *Bitset) *Bitset {
+	result := NewBitset(x.size)
 	for i := 0; i < len(result.bits); i++ {
-		result.bits[i] = b.bits[i] & other.bits[i]
+		result.bits[i] = x.bits[i] & y.bits[i]
 	}
 	return result
 }
 
 func (b *Bitset) Or(other *Bitset) *Bitset {
-	b.mu.Lock()
-	other.mu.Lock()
-	defer b.mu.Unlock()
-	defer other.mu.Unlock()
+	b.mu.RLock()
+	other.mu.RLock()
+	defer b.mu.RUnlock()
+	defer other.mu.RUnlock()
 
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not compute OR")
 		return nil
 	}
 
-	result := NewBitset(b.size)
+	return computeOr(b, other)
+}
+
+// computeOr assumes bitsets are of equal sizes
+func computeOr(x *Bitset, y *Bitset) *Bitset {
+	result := NewBitset(x.size)
 	for i := 0; i < len(result.bits); i++ {
-		result.bits[i] = b.bits[i] | other.bits[i]
+		result.bits[i] = x.bits[i] | y.bits[i]
 	}
 	return result
 }
 
 func (b *Bitset) Xor(other *Bitset) *Bitset {
-	b.mu.Lock()
-	other.mu.Lock()
-	defer b.mu.Unlock()
-	defer other.mu.Unlock()
+	b.mu.RLock()
+	other.mu.RLock()
+	defer b.mu.RUnlock()
+	defer other.mu.RUnlock()
 
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not XOR")
 		return nil
 	}
 
-	result := NewBitset(b.size)
+	return computeXor(b, other)
+}
+
+func computeXor(x *Bitset, y *Bitset) *Bitset {
+	result := NewBitset(x.size)
 	for i := 0; i < len(result.bits); i++ {
-		result.bits[i] = b.bits[i] ^ other.bits[i]
+		result.bits[i] = x.bits[i] ^ y.bits[i]
 	}
 	return result
 }
 
 func (b *Bitset) Not() *Bitset {
-	result := NewBitset(b.size)
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	return computeNot(b)
 
-	for i := 0; i < len(b.bits); i++ {
-		result.bits[i] = ^b.bits[i]
+}
+
+func computeNot(x *Bitset) *Bitset {
+	result := NewBitset(x.size)
+	for i := 0; i < len(x.bits); i++ {
+		result.bits[i] = ^x.bits[i]
 	}
 
-	remainder := b.size % 64
+	remainder := x.size % 64
 	if remainder != 0 {
 		mask := ^uint64(0) << (64 - remainder)
 		result.bits[len(result.bits)-1] &= mask
 	}
 	return result
-
 }
 
 func (b *Bitset) AndNot(other *Bitset) *Bitset {
+	b.mu.RLock()
+	other.mu.RLock()
+	defer b.mu.RUnlock()
+	defer other.mu.RUnlock()
+
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not AND NOT")
 		return nil
 	}
-	otherInv := other.Not()
-	return b.And(otherInv)
+	return computeAnd(b, computeNot(other))
 }
 
 func (b *Bitset) OrNot(other *Bitset) *Bitset {
+	b.mu.RLock()
+	other.mu.RLock()
+	defer b.mu.RUnlock()
+	defer other.mu.RUnlock()
+
 	if b.size != other.size {
 		log.Fatalf("[fatal]: bitset sizes are not equal, can not OR NOT")
 		return nil
 	}
-	otherInv := other.Not()
-	return b.Or(otherInv)
+
+	return computeOr(b, computeNot(other))
+
 }
