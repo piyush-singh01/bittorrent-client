@@ -27,6 +27,15 @@ func (m *MutexMap[K, V]) Put(key K, value V) {
 	m.store[key] = value
 }
 
+func (m *MutexMap[K, V]) PutOnlyIfNotExists(key K, value V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.store[key]; !ok {
+		m.store[key] = value
+	}
+}
+
 // GetOrDefault returns the default zero value of the underlying type, if the value is not present
 func (m *MutexMap[K, V]) GetOrDefault(key K) V {
 	m.mu.RLock()

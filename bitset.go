@@ -182,8 +182,9 @@ func (b *Bitset) CountSetBits() uint {
 func (b *Bitset) AnySetBits() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
 	for i := range b.bits {
-		if bits.OnesCount64(b.bits[i]) == 1 {
+		if bits.OnesCount64(b.bits[i]) >= 1 {
 			return true
 		}
 	}
