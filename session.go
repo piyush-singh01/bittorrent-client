@@ -67,6 +67,7 @@ func (ts *TorrentSession) InitializePeer(peerConnection *PeerConnection) {
 
 func (ts *TorrentSession) RemovePeer(peerConnection *PeerConnection) {
 	ts.connectedPeers.Delete(peerConnection.peerIdStr)
+	ts.bitfieldManager.RemovePeer(peerConnection.peerIdStr)
 }
 
 /* QUITTER GOROUTINE */
@@ -75,6 +76,7 @@ func (ts *TorrentSession) RemovePeer(peerConnection *PeerConnection) {
 func (ts *TorrentSession) StartQuitter() {
 	for {
 		connection := <-ts.quitChannel
+		ts.RemovePeer(connection)
 		connection.CloseConnection()
 	}
 }
