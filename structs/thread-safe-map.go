@@ -2,13 +2,6 @@ package structs
 
 import "sync"
 
-type number interface {
-	int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64
-}
-
-type key interface {
-	number | string
-}
 type MutexMap[K key, V any] struct {
 	mu    sync.RWMutex
 	store map[K]V
