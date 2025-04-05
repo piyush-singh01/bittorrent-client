@@ -2,6 +2,7 @@ package main
 
 import (
 	"bittorrent-client/structs"
+	"log"
 	"sync"
 )
 
@@ -37,47 +38,59 @@ func NewBitfieldManager(selfBitfield *Bitset) *BitfieldManager {
 	}
 }
 
-func (bm *BitfieldManager) AddPeer(peerIdStr string, peerBitfield *Bitset) {
+func (bm *BitfieldManager) AddPeerWithoutBitfield(peerIdStr string) {
+	log.Printf("configuring new peer %s in bitfield manager", peerIdStr)
+
 	bm.peerMutex.PutOnlyIfNotExists(peerIdStr, new(sync.RWMutex))
+
+	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
+	peerMu.Lock()
+	defer peerMu.Unlock()
+}
+
+func (bm *BitfieldManager) AddBitfieldToPeer(peerIdStr string, peerBitfield *Bitset) {
+	log.Printf("adding bitfield to peer %s", peerIdStr)
 
 	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
 	peerMu.Lock()
 	defer peerMu.Unlock()
 
 	bm.peerBitfields.Put(peerIdStr, peerBitfield)
+	bm.addBitfieldToFrequencyMap(peerBitfield)
+}
 
-	for i := range peerBitfield.bits {
-		for j := uint(0); j < uint(64); j++ {
-			adjustedBitIndex := 63 - j
-			if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
-				pieceIndex := i*64 + int(j)
-				bm.pieceFrequency.Inc(pieceIndex)
-			}
-		}
-	}
+func (bm *BitfieldManager) UpdateBitfieldForPeer(peerIdStr string, newPeerBitfield *Bitset) {
+	log.Printf("updating the complete bitfield for peer %s", peerIdStr)
+
+	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
+	existingPeerBitfield := bm.peerBitfields.GetOrDefault(peerIdStr)
+	bm.removeBitfieldFromFrequencyMap(existingPeerBitfield)
+
+	bm.peerBitfields.Put(peerIdStr, newPeerBitfield)
+	bm.addBitfieldToFrequencyMap(newPeerBitfield)
+
 }
 
 func (bm *BitfieldManager) RemovePeer(peerIdStr string) {
+	log.Printf("removing peer %s from bitfield manager", peerIdStr)
+
 	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
 	peerMu.Lock()
 	defer peerMu.Unlock()
 
 	peerBitfield := bm.peerBitfields.GetOrDefault(peerIdStr)
-	for i := range peerBitfield.bits {
-		for j := uint(0); j < uint(64); j++ {
-			adjustedBitIndex := 63 - j
-			if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
-				pieceIndex := i*64 + int(j)
-				bm.pieceFrequency.Dec(pieceIndex)
-			}
-		}
-	}
+	bm.removeBitfieldFromFrequencyMap(peerBitfield)
 
 	bm.peerBitfields.Delete(peerIdStr)
 	bm.peerMutex.Delete(peerIdStr)
 }
 
 func (bm *BitfieldManager) AddPieceToExistingPeer(peerIdStr string, pieceIndex int) {
+	log.Printf("adding piece %d to existing peer %s", pieceIndex, peerIdStr)
+
 	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
 	peerMu.Lock()
 	defer peerMu.Unlock()
@@ -101,4 +114,32 @@ func (bm *BitfieldManager) IsAmInterested(peerIdStr string) bool {
 // GetRarestPieceIndex find the most rare piece in swarm
 func (bm *BitfieldManager) GetRarestPieceIndex() int {
 	return bm.pieceFrequency.GetMostRareKey()
+}
+
+func (bm *BitfieldManager) addBitfieldToFrequencyMap(peerBitfield *Bitset) {
+	if peerBitfield != nil {
+		for i := range peerBitfield.bits {
+			for j := uint(0); j < uint(64); j++ {
+				adjustedBitIndex := 63 - j
+				if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
+					pieceIndex := i*64 + int(j)
+					bm.pieceFrequency.Inc(pieceIndex)
+				}
+			}
+		}
+	}
+}
+
+func (bm *BitfieldManager) removeBitfieldFromFrequencyMap(peerBitfield *Bitset) {
+	if peerBitfield != nil {
+		for i := range peerBitfield.bits {
+			for j := uint(0); j < uint(64); j++ {
+				adjustedBitIndex := 63 - j
+				if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
+					pieceIndex := i*64 + int(j)
+					bm.pieceFrequency.Dec(pieceIndex)
+				}
+			}
+		}
+	}
 }
