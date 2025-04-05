@@ -21,8 +21,12 @@ func NewBitset(n uint) *Bitset {
 }
 
 func ParseAndValidateBitset(data []byte, selfBitfieldSize uint) (*Bitset, error) {
-	size := uint(len(data) * 8)
-	sizeBitset := ceilDiv(size, 64)
+	peerSize := uint(len(data) * 8) // this is not the bitfield size; last byte need not be completely used
+	sizeBitset := ceilDiv(selfBitfieldSize, 64)
+
+	if sizeBitset < ceilDiv(peerSize, 64) {
+		return nil, ErrBitsetSizeInvalid(selfBitfieldSize, ceilDiv(peerSize, 64))
+	}
 
 	bitValues := make([]uint64, sizeBitset)
 	for i := uint(0); i < sizeBitset; i++ {
@@ -43,20 +47,17 @@ func ParseAndValidateBitset(data []byte, selfBitfieldSize uint) (*Bitset, error)
 
 	peerBitset := &Bitset{
 		bits: bitValues,
-		size: size,
+		size: selfBitfieldSize,
 	}
-	if peerBitset.Validate(selfBitfieldSize) {
+	if validate(peerSize, selfBitfieldSize) {
 		return peerBitset, nil
 	}
 	return nil, ErrBitsetSizeInvalid(selfBitfieldSize, peerBitset.size)
 }
 
-// Validate the receiver here is the peer bitfield
-func (b *Bitset) Validate(selfBitfieldSize uint) bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	if b.size == selfBitfieldSize {
+// validate the receiver here is the peer bitfield
+func validate(peerBitfieldSize uint, selfBitfieldSize uint) bool {
+	if ceilDiv(peerBitfieldSize, 8) == ceilDiv(selfBitfieldSize, 8) {
 		return true
 	}
 	return false

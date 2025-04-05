@@ -56,3 +56,9 @@ var ErrHashVerificationFailed = errors.New("calculated hash does not match the e
 var ErrOffsetNotDivisibleByBlockSize = func(offset int64, blockSize int64) error {
 	return fmt.Errorf("offset : %d, not divisible by block size (%d)", offset, blockSize)
 }
+
+/* BITSET */
+
+var ErrBitsetSizeInvalid = func(expected uint, actual uint) error {
+	return fmt.Errorf("bitset size is invalid, expected: %d, actual: %d", expected, actual)
+}

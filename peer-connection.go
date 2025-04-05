@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-/* TOC
+/** TOC
 - INIT
 	- New Peer Without Reader and Writer Goroutines
 	- Start Reader and Writer Goroutines
@@ -19,34 +19,36 @@ import (
 - READ
 	- ReadBytes
 	- ReadMessage
-	- UpdateLastReadTime
+	- SafeUpdateLastReadTime
 - WRITE
 	- WriteBytes
 	- WriteMessage
-	- UpdateLastWriteTime
-- SEND
-	-
+	- SafeUpdateLastWriteTime
 - CLOSE
 	- CloseConnection
 */
 
-// PeerConnection represents an active connection with a peerConnection
+// PeerConnection represents an active connection with a peer
 type PeerConnection struct {
+	mutex    sync.Mutex
+	isActive bool
+
 	/* Immutable fields */
 	tcpConn   net.Conn
 	peerId    [20]byte
 	peerIdStr string
 
-	mu sync.RWMutex
 	/* Mutable Fields */
+	stateMutex     sync.RWMutex
 	amChoking      bool
 	amInterested   bool
 	peerChoking    bool
 	peerInterested bool
 
-	isActive       bool
+	piecesMutex    sync.RWMutex
 	piecesBitfield *Bitset
 
+	timeMutex     sync.RWMutex
 	lastWriteTime time.Time
 	lastReadTime  time.Time
 
@@ -63,18 +65,14 @@ type PeerConnection struct {
 /************************************** INIT **************************************/
 
 func NewPeerConnection(peer Peer, conn net.Conn) *PeerConnection {
-	return &PeerConnection{
+	peerConnection := &PeerConnection{
+		isActive: false,
+
 		tcpConn:        conn,
-		isActive:       false,
 		piecesBitfield: nil,
 
 		peerId:    peer.PeerId,
 		peerIdStr: hex.EncodeToString(peer.PeerId[:]),
-
-		amChoking:      true,
-		amInterested:   false,
-		peerChoking:    true,
-		peerInterested: false,
 
 		writeChannel: make(chan *PeerMessage, 10),
 
@@ -84,6 +82,19 @@ func NewPeerConnection(peer Peer, conn net.Conn) *PeerConnection {
 		peerReaderStarted: false,
 		peerWriterStarted: false,
 	}
+
+	if err := peerConnection.tcpConn.(*net.TCPConn).SetKeepAlive(true); err != nil {
+		log.Printf("error setting keep alive for peer %s", peer.PeerId)
+	}
+	if err := peerConnection.tcpConn.(*net.TCPConn).SetKeepAlivePeriod(30 * time.Second); err != nil {
+		log.Printf("error setting keep alive period for peer %s", peer.PeerId)
+	}
+
+	peerConnection.amChoking = true
+	peerConnection.amInterested = false
+	peerConnection.peerChoking = true
+	peerConnection.peerInterested = false
+	return peerConnection
 }
 
 func (pc *PeerConnection) StartReaderAndWriter(session *TorrentSession) {
@@ -99,33 +110,8 @@ func (pc *PeerConnection) StartReaderAndWriter(session *TorrentSession) {
 }
 
 func CreatePeerConnectionAndStartReaderWriter(peer Peer, conn net.Conn, session *TorrentSession) {
-	var peerConnection = &PeerConnection{
-		tcpConn:        conn,
-		isActive:       false, // remove for now,
-		piecesBitfield: nil,
-
-		peerId:    peer.PeerId,
-		peerIdStr: hex.EncodeToString(peer.PeerId[:]),
-
-		amChoking:      true,
-		amInterested:   false,
-		peerChoking:    true,
-		peerInterested: false,
-
-		lastWriteTime: time.Now(),
-
-		writeChannel: make(chan *PeerMessage, 30),
-
-		quitReaderChannel: make(chan struct{}, 1),
-		quitWriterChannel: make(chan struct{}, 1),
-
-		peerReaderStarted: false,
-		peerWriterStarted: false,
-	}
-	go peerConnection.PeerReader(session)
-	go peerConnection.PeerWriter(session)
-
-	session.InitializePeer(peerConnection)
+	var peerConnection = NewPeerConnection(peer, conn)
+	peerConnection.StartReaderAndWriter(session)
 }
 
 func DialPeerWithTimeoutTCP(peer Peer, session *TorrentSession) (*PeerConnection, error) {
@@ -170,7 +156,7 @@ func (pc *PeerConnection) ReadMessage(rateTracker *RateTracker) (message *PeerMe
 	}
 	log.Printf("read %d bytes; message of type %d from peer %s", n, message.MessageId, pc.peerIdStr)
 	rateTracker.RecordDownload(pc.peerIdStr, n)
-	pc.UpdateLastReadTime()
+	pc.SafeUpdateLastReadTime()
 	return
 }
 
@@ -184,11 +170,13 @@ func (pc *PeerConnection) ReadBytes(rateTracker *RateTracker) (data []byte, n in
 	log.Printf("read %d  bytes from peer %s", n, pc.peerIdStr)
 	data = buffer[:n]
 	rateTracker.RecordDownload(pc.peerIdStr, n)
-	pc.UpdateLastReadTime()
+	pc.SafeUpdateLastReadTime()
 	return
 }
 
-func (pc *PeerConnection) UpdateLastReadTime() {
+func (pc *PeerConnection) SafeUpdateLastReadTime() {
+	pc.timeMutex.Lock()
+	defer pc.timeMutex.Unlock()
 	pc.lastReadTime = time.Now()
 }
 
@@ -201,7 +189,7 @@ func (pc *PeerConnection) WriteMessage(message *PeerMessage, rateTracker *RateTr
 	}
 
 	log.Printf("written %d bytes; message of type %d to peer %s", n, message.MessageId, pc.peerIdStr)
-	pc.UpdateLastWriteTime()
+	pc.SafeUpdateLastWriteTime()
 	rateTracker.RecordUpload(pc.peerIdStr, n)
 	return
 }
@@ -213,12 +201,14 @@ func (pc *PeerConnection) WriteBytes(data []byte, rateTracker *RateTracker) (n i
 	}
 
 	log.Printf("written %d bytes to peer %s", n, pc.peerIdStr)
-	pc.UpdateLastWriteTime()
+	pc.SafeUpdateLastWriteTime()
 	rateTracker.RecordUpload(pc.peerIdStr, n)
 	return
 }
 
-func (pc *PeerConnection) UpdateLastWriteTime() {
+func (pc *PeerConnection) SafeUpdateLastWriteTime() {
+	pc.timeMutex.Lock()
+	defer pc.timeMutex.Unlock()
 	pc.lastWriteTime = time.Now()
 }
 

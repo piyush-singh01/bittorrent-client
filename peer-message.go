@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 )
 
 /* TOC
@@ -218,7 +219,7 @@ func ParsePeerMessage(data []byte) (*PeerMessage, error) {
 		}
 
 		// Validate payload length
-		if messageLength != uint32(len(payload)) {
+		if messageLength != uint32(len(payload)+1) {
 			return nil, fmt.Errorf("invalid data length: expected %d bytes, got %d", messageLength, len(payload))
 		}
 		return NewPeerMessage(messageLength, PeerMessageType(messageId), payload), nil
@@ -268,7 +269,8 @@ func (p *PeerMessage) GetHaveMessagePayload() uint {
 	if p.MessageId == Have {
 		return uint(binary.BigEndian.Uint32(p.Payload[:4]))
 	}
-	return -1
+	log.Fatalf("message id %d not of type 'Have'", p.MessageId)
+	return 0
 }
 
 func NewBitfieldMessage(bitset *Bitset) *PeerMessage {
@@ -276,8 +278,13 @@ func NewBitfieldMessage(bitset *Bitset) *PeerMessage {
 	return NewPeerMessage(uint32(len(payload)+1), Bitfield, payload)
 }
 
-func (p *PeerMessage) GetBitfieldMessagePayload() *Bitset {
-	return ParseBitset(p.Payload)
+func (p *PeerMessage) GetBitfieldMessagePayload(session *TorrentSession) *Bitset {
+	bitset, err := ParseAndValidateBitset(p.Payload, session.bitfield.size)
+	if err != nil {
+		log.Printf(err.Error())
+		return nil
+	}
+	return bitset
 }
 
 func NewRequestMessage(index uint32, begin uint32, length uint32) *PeerMessage {

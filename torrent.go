@@ -57,7 +57,7 @@ type Torrent struct {
 	Encoding      string      // the character encoding used in this file (UTF-8)
 	UrlList       []string    // alternate urls for downloading the resource
 	StructureType TorrentType // for single or multi file types
-	Info          InfoDict    // info dictionary
+	Info          *InfoDict   // info dictionary
 	InfoHash      [20]byte    // SHA1 hash of the info dictionary
 }
 
@@ -109,10 +109,10 @@ func (info *InfoDict) String() string {
 	}
 
 	return fmt.Sprintf(
-		"InfoDict{\n\t\tName: %s,\n\t\tPieceLength: %d,\n\t\tPieces: %d bytes,\n\t\tLength: %d,\n\t\tFiles: %v\n\t}",
+		"InfoDict{\n\t\tName: %s,\n\t\tPieceLength: %d,\n\t\tNumPieces: %d,\n\t\tLength: %d,\n\t\tFiles: %v\n\t}",
 		info.Name,
 		info.PieceLength,
-		len(info.Pieces),
+		info.NumPieces,
 		info.Length,
 		filesStr,
 	)
@@ -213,14 +213,14 @@ func parseOptionalUrlList(bencodeTorrentDict *bencodingParser.BencodeDict) []str
 }
 
 // parseInfoDictionary Mandatory Field
-func parseInfoDictionary(bencodeTorrentDict *bencodingParser.BencodeDict) InfoDict {
+func parseInfoDictionary(bencodeTorrentDict *bencodingParser.BencodeDict) *InfoDict {
 	infoDictionaryBencode, exists := bencodeTorrentDict.Get(InfoKey)
 	if !exists {
 		log.Fatalf("no 'info' dictionary found in torrent file")
 	}
 	infoDictionary := infoDictionaryBencode.BDict
 
-	infoDict := InfoDict{}
+	infoDict := &InfoDict{}
 	infoDict.Name = parseNameInInfoDictionary(infoDictionary)
 	infoDict.PieceLength = parsePieceLengthInInfoDictionary(infoDictionary)
 	infoDict.Pieces, infoDict.NumPieces = parsePiecesInInfoDictionary(infoDictionary)
