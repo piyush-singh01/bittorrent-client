@@ -23,10 +23,11 @@ import (
 */
 
 type BitfieldManager struct {
-	peerMutex      *structs.MutexMap[string, *sync.RWMutex]
-	selfBitfield   *Bitset
-	peerBitfields  *structs.MutexMap[string, *Bitset]
-	pieceFrequency *structs.MutexAllForOne[int]
+	peerMutex              *structs.MutexMap[string, *sync.RWMutex]
+	selfBitfield           *Bitset
+	peerBitfields          *structs.MutexMap[string, *Bitset]
+	pieceFrequency         *structs.MutexAllForOne[int]
+	pieceFrequencyUnchoked *structs.MutexAllForOne[int]
 }
 
 func NewBitfieldManager(selfBitfield *Bitset) *BitfieldManager {
@@ -138,6 +139,52 @@ func (bm *BitfieldManager) removeBitfieldFromFrequencyMap(peerBitfield *Bitset) 
 				if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
 					pieceIndex := i*64 + int(j)
 					bm.pieceFrequency.Dec(pieceIndex)
+				}
+			}
+		}
+	}
+}
+
+func (bm *BitfieldManager) AddNewUnchokedPeer(peerIdStr string) {
+	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
+	peerBitfield := bm.peerBitfields.GetOrDefault(peerIdStr)
+	bm.addBitfieldToUnchokedFrequencyMap(peerBitfield)
+}
+
+func (bm *BitfieldManager) RemoveUnchokedPeer(peerIdStr string) {
+	peerMu := bm.peerMutex.GetOrDefault(peerIdStr)
+	peerMu.Lock()
+	defer peerMu.Unlock()
+
+	peerBitfield := bm.peerBitfields.GetOrDefault(peerIdStr)
+	bm.removeBitfieldFromUnchokedFrequencyMap(peerBitfield)
+}
+
+func (bm *BitfieldManager) addBitfieldToUnchokedFrequencyMap(peerBitfield *Bitset) {
+	if peerBitfield != nil {
+		for i := range peerBitfield.bits {
+			for j := uint(0); j < uint(64); j++ {
+				adjustedBitIndex := 63 - j
+				if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
+					pieceIndex := i*64 + int(j)
+					bm.pieceFrequencyUnchoked.Inc(pieceIndex)
+				}
+			}
+		}
+	}
+}
+
+func (bm *BitfieldManager) removeBitfieldFromUnchokedFrequencyMap(peerBitfield *Bitset) {
+	if peerBitfield != nil {
+		for i := range peerBitfield.bits {
+			for j := uint(0); j < uint(64); j++ {
+				adjustedBitIndex := 63 - j
+				if ((peerBitfield.bits[i] >> adjustedBitIndex) & 1) == 1 {
+					pieceIndex := i*64 + int(j)
+					bm.pieceFrequencyUnchoked.Dec(pieceIndex)
 				}
 			}
 		}
