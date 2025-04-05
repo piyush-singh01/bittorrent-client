@@ -17,7 +17,7 @@
 </p>
 
 
-*pTorrent* is a fully-featured BitTorrent client that implements the [BitTorrent protocol specification](https://www.bittorrent.org/beps/bep_0003.html) with a focus on performance and reliability:
+*pTorrent* is a fully-featured BitTorrent client that implements the [BitTorrent Protocol Specification v1.0 (BEP 3)](https://www.bittorrent.org/beps/bep_0003.html) with a focus on performance and reliability:
 
 ## Installation
 
