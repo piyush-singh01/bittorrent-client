@@ -335,7 +335,7 @@ func (tfs *TorrentFileSystem) ReadBlock(pieceIndex int64, relativeOffset int64, 
 	return tfs.readFileByFile(length, absoluteOffset, offsetToReadTill)
 }
 
-func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64, block []byte) (int64, error) {
+func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64, block []byte, completionChannel chan<- Pair[StateRequestType, int64]) (int64, error) {
 
 	/* REQUEST VALIDATION */
 	length := int64(len(block))
@@ -362,21 +362,30 @@ func (tfs *TorrentFileSystem) WriteBlock(pieceIndex int64, relativeOffset int64,
 	log.Printf("number of blocks completed :%d", tfs.pieces[pieceIndex].numBlocksCompleted)
 	log.Printf("number of blocks in piece :%d", tfs.pieces[pieceIndex].numBlocksInPiece)
 
+	completionChannel <- MakePair(Downloaded, lengthWritten)
+
 	/* IF ALL BLOCKS ARE COMPLETED */
+	var pieceComplete = false
+	// TODO: handle torrent complete case as well
 	if tfs.pieces[pieceIndex].numBlocksCompleted == tfs.pieces[pieceIndex].numBlocksInPiece {
-		tfs.pieces[pieceIndex].validateCompletePiece(tfs)
+		pieceComplete, _ = tfs.pieces[pieceIndex].validateCompletePiece(tfs)
+	}
+	if pieceComplete {
+		completionChannel <- MakePair(Left, tfs.pieces[pieceIndex].length)
 	}
 	return lengthWritten, nil
 }
 
-func (tp *TorrentPiece) validateCompletePiece(torrentFileSystem *TorrentFileSystem) {
+func (tp *TorrentPiece) validateCompletePiece(torrentFileSystem *TorrentFileSystem) (pieceComplete bool, torrentComplete bool) {
 	retries := 3
+	pieceComplete = false
+	torrentComplete = false
 	for i := 0; i < retries; i++ {
 		_, piece, err := torrentFileSystem.readPieceForValidation(int64(tp.index))
 		if err != nil {
-			log.Printf("error reading piece: %v", err)
+			log.Printf("error reading piece: %v ", err)
 			if i < retries-1 {
-				log.Printf("retrying")
+				log.Printf("retrying...")
 			}
 			continue
 		}
@@ -394,9 +403,11 @@ func (tp *TorrentPiece) validateCompletePiece(torrentFileSystem *TorrentFileSyst
 		torrentFileSystem.numPiecesObtained++
 		torrentFileSystem.mu.Unlock()
 
+		pieceComplete = true
 		// TODO: Broadcast `have`, update bitfield etc.
 		if torrentFileSystem.numPieces == torrentFileSystem.numPiecesObtained {
 			// TODO: if all pieces are obtained
+			torrentComplete = true
 		}
 		return
 	}
