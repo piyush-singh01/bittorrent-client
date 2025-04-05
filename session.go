@@ -33,9 +33,6 @@ type TorrentSession struct {
 	quitChannel chan *PeerConnection // A quitter to terminate peer connections
 
 	state *TorrentState
-
-	/* Tickers */
-	keepAliveTicker *time.Ticker
 }
 
 func NewTorrentSession(torrent *Torrent, localPeerId [20]byte) (*TorrentSession, error) {
