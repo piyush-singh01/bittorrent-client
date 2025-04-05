@@ -10,7 +10,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	// Open the file
-	fileName := "test-torrents/sample.torrent"
+	fileName := "test-torrents/ubuntu-server.torrent"
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatalf("[fatal] error opening file %s: %v", fileName, err)
@@ -122,17 +122,6 @@ func main() {
 		defer wg.Done()
 		log.Printf("starting quitter")
 		torrentSession.StartQuitter()
-	}()
-
-	/************************ KEEP-ALIVE ************************/
-
-	torrentSession.StartKeepAliveTicker()
-	log.Printf("keep alive ticker started")
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		log.Printf("starting keep alive handler")
-		torrentSession.KeepAliveHandler()
 	}()
 
 	/************************ TORRENT-FILE-SYSTEM ************************/

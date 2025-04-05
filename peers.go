@@ -24,9 +24,9 @@ func GetIPType(ip net.IP) IPType {
 
 type Peer struct {
 	PeerId [20]byte
-	IP     net.IP
-	Type   IPType
-	Port   uint16
+	IP   net.IP
+	Type IPType
+	Port uint16
 }
 
 func (p Peer) String() string {
